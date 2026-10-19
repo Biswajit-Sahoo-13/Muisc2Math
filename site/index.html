@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metre — Lost · bytebeat reconstruction</title>
+<link rel="icon" href="dollchan/favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Metre — Lost</h1>
+  <p class="sub">a song turned into math equations, replayed from scratch</p>
+</header>
+<main>
+  <section class="card">
+    <h2>Player</h2>
+    <div class="row">
+      <label>Song <select id="song"></select></label>
+      <label>Mode <select id="mode">
+        <option value="0">Bytebeat</option>
+        <option value="1">Signed Bytebeat</option>
+        <option value="2">Floatbeat</option>
+        <option value="3">Funcbeat</option>
+      </select></label>
+      <label>Rate <input id="rate" type="number" min="1000" max="96000" step="1" value="22050"></label>
+      <label>Vol <input id="vol" type="range" min="0" max="100" value="35"></label>
+      <label>Seek <input id="seek" type="range" min="0" max="120" step="0.1" value="0"> <span id="pos">0:00.0</span></label>
+    </div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="compileBtn">Compile</button>
+      <button id="playBtn">Play</button>
+      <button id="stopBtn">Stop</button>
+      <button id="wavBtn">Export WAV</button>
+      <button id="linkBtn">Dollchan link</button>
+      <a id="dollchanLink" href="https://dollchan.net/bytebeat/" target="_blank">Dollchan</a>
+      <span id="status"></span>
+    </div>
+    <canvas id="scope" width="900" height="160"></canvas>
+  </section>
+  <section class="card">
+    <h2>Songs</h2>
+    <table id="songsTable">
+      <thead><tr><th>File</th><th>Mode</th><th>Rate</th><th>Bytes</th><th>Correlation</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>How it works</h2>
+    <p>The song was reconstructed as a chain of resonant-filter equations that turn a clock <code>t</code> into audio.
+    Each equation is a tiny expression; together they reproduce the melody, chords and glide amplitudes of the original
+    track. The player above compiles the equations with the same engine as dollchan bytebeat composer, so playback and
+    exported WAVs match the verified reconstruction (correlation 0.9999 against the reference render).</p>
+  </section>
+  <section class="card">
+    <h2>Full composer</h2>
+    <iframe src="dollchan/index.html" width="100%" height="720"></iframe>
+    <p><a href="dollchan/index.html" target="_blank">Open the composer in its own tab</a> — paste any equation file
+    there, set mode and sample rate, and it plays the same.</p>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

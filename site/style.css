@@ -1,0 +1,22 @@
+:root { color-scheme: dark; }
+body { background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; margin: 0 auto; max-width: 980px; padding: 16px; }
+header h1 { margin: 8px 0 0; font-size: 28px; }
+.sub { color: #8b949e; margin-top: 4px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin: 16px 0; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+label { display: flex; gap: 6px; align-items: center; color: #8b949e; font-size: 14px; }
+select, input, button, textarea { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; }
+select, input { padding: 4px 8px; }
+button { padding: 6px 14px; cursor: pointer; }
+button:hover { border-color: #7ee787; color: #7ee787; }
+textarea { width: 100%; height: 140px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #7ee787; padding: 8px; box-sizing: border-box; resize: vertical; }
+#status { color: #8b949e; font-size: 14px; }
+#pos { color: #7ee787; font-variant-numeric: tabular-nums; min-width: 52px; display: inline-block; }
+#seek { vertical-align: middle; }
+#scope { width: 100%; height: 160px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border: 1px solid #30363d; padding: 6px 10px; text-align: left; }
+th { color: #8b949e; }
+iframe { border: 1px solid #30363d; border-radius: 6px; background: #fff; }
+a { color: #7ee787; }
+code { color: #7ee787; }

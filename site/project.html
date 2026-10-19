@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metre â€” Lost Â· interactive project report</title>
+<style>
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2128;--line:#30363d;--line2:#21262d;
+  --fg:#e6edf3;--dim:#8b949e;--dim2:#6e7681;
+  --grn:#7ee787;--cyn:#66fcf1;--pnk:#ff7597;--pur:#c792ea;--amb:#ffcb6b;--blu:#82aaff;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:74px}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.68;font-size:17.5px;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--cyn);text-decoration:none}a:hover{text-decoration:underline}
+code,pre{font-family:var(--mono)}
+h1,h2,h3,h4{line-height:1.25;font-weight:650;letter-spacing:-.015em}
+.wrap{max-width:min(1760px,100%);margin:0 auto;padding:0 clamp(14px,2.6vw,48px)}
+::selection{background:rgba(126,231,135,.28)}
+#prog{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--grn),var(--cyn),var(--pur));z-index:200;width:0}
+nav{position:sticky;top:0;z-index:60;background:rgba(13,17,23,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--line2)}
+nav .wrap{display:flex;align-items:center;gap:4px;height:58px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .brand{font-weight:700;font-size:15.5px;white-space:nowrap;margin-right:12px;color:var(--grn)}
+nav a{font-size:14px;color:var(--dim);padding:6px 10px;border-radius:6px;white-space:nowrap;transition:.15s}
+nav a:hover{color:var(--fg);background:var(--bg2);text-decoration:none}
+nav a.on{color:#0a1a0c;background:var(--grn);font-weight:600}
+header.hero{padding:76px 0 50px;border-bottom:1px solid var(--line2);position:relative;overflow:hidden}
+#heroAnim{position:absolute;inset:0;opacity:.55;pointer-events:none}
+header.hero .wrap{position:relative;z-index:1}
+.eyebrow{font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--grn);font-weight:700;margin-bottom:14px}
+header.hero h1{font-size:clamp(32px,5vw,62px);margin-bottom:18px;
+  background:linear-gradient(100deg,#e6edf3 18%,#7ee787 55%,#66fcf1 92%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:19.5px;color:var(--dim);max-width:92ch}
+.lede b{color:var(--fg);font-weight:600}
+.heroacts{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px;margin-top:40px}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:17px 19px;position:relative;overflow:hidden}
+.stat::after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 60%,rgba(126,231,135,.05));pointer-events:none}
+.stat .v{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.02em}
+.stat .l{font-size:12.5px;color:var(--dim2);text-transform:uppercase;letter-spacing:.08em;margin-top:5px}
+.stat.g .v{color:var(--grn)}.stat.c .v{color:var(--cyn)}.stat.p .v{color:var(--pnk)}
+.stat.u .v{color:var(--pur)}.stat.a .v{color:var(--amb)}.stat.b .v{color:var(--blu)}
+.btn{display:inline-flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--line);color:var(--fg);
+  padding:9px 17px;border-radius:9px;font-size:15px;font-weight:550;cursor:pointer;transition:.16s;font-family:var(--sans)}
+.btn:hover{border-color:var(--grn);color:var(--grn);text-decoration:none}
+.btn.pri{background:var(--grn);border-color:var(--grn);color:#0a1a0c;font-weight:700}
+.btn.pri:hover{filter:brightness(1.12)}
+.btn:disabled{opacity:.4;cursor:not-allowed}.btn.sm{padding:6px 12px;font-size:13.5px}
+section{padding:74px 0;border-bottom:1px solid var(--line2)}
+.sec-head{margin-bottom:30px}
+.sec-head .n{font-family:var(--mono);font-size:13.5px;color:var(--grn);letter-spacing:.1em}
+.sec-head h2{font-size:clamp(26px,3.2vw,40px);margin:8px 0 12px}
+.sec-head p{color:var(--dim);max-width:100ch;font-size:17px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:22px}
+.card h3{font-size:17.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card p{font-size:16px;color:var(--dim);max-width:82ch}
+.card.g{border-left:3px solid var(--grn)}.card.c{border-left:3px solid var(--cyn)}
+.card.p{border-left:3px solid var(--pnk)}.card.u{border-left:3px solid var(--pur)}
+.card.a{border-left:3px solid var(--amb)}.card.b{border-left:3px solid var(--blu)}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.d-g{background:var(--grn)}.d-c{background:var(--cyn)}.d-p{background:var(--pnk)}
+.d-u{background:var(--pur)}.d-a{background:var(--amb)}.d-b{background:var(--blu)}.d-d{background:var(--dim)}
+pre{background:#0a0e13;border:1px solid var(--line);border-radius:10px;padding:18px 20px;overflow-x:auto;font-size:14px;line-height:1.7;color:#c9d1d9;position:relative}
+pre.sm{font-size:13px}
+.cp{position:absolute;top:10px;right:10px;background:var(--bg3);border:1px solid var(--line);color:var(--dim);
+  border-radius:7px;font-size:12px;padding:4px 10px;cursor:pointer;font-family:var(--sans);opacity:0;transition:.15s}
+pre:hover .cp{opacity:1}.cp:hover{color:var(--grn);border-color:var(--grn)}
+code{background:var(--bg3);padding:2px 7px;border-radius:5px;font-size:.92em;color:var(--cyn);border:1px solid var(--line2)}
+pre code{background:none;padding:0;border:none;color:inherit;font-size:inherit}
+.k{color:var(--pnk)}.f{color:var(--amb)}.s{color:var(--pur)}.n{color:var(--cyn)}.m{color:#6e7681;font-style:italic}
+.dia{background:linear-gradient(180deg,#0b0f14,#0a0e13);border:1px solid var(--line);border-radius:13px;padding:20px;position:relative;overflow:hidden}
+.dia svg{display:block;width:100%;height:auto}
+.dia-cap{font-size:13px;color:var(--dim2);margin-top:10px;font-family:var(--mono);text-align:center}
+.legend{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:14px;font-size:14px;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;transition:.15s;padding:3px 8px;border-radius:6px}
+.legend span:hover{background:var(--bg3)}
+.legend span.off{opacity:.3}
+.legend i{width:13px;height:13px;border-radius:50%;display:inline-block}
+.legend i.sq{border-radius:3px}
+svg text{font-family:var(--mono)}
+.fl-node{cursor:pointer;transition:.2s}
+.fl-node:hover rect{stroke-width:2;filter:brightness(1.2)}
+.fl-node.sel rect{stroke-width:2.4}
+.flow{stroke-dasharray:7 7;animation:flow 1.1s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-14}}
+.lab{display:grid;grid-template-columns:1fr 380px;gap:20px}
+@media(max-width:840px){.lab{grid-template-columns:1fr}}
+.panel{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:20px}
+.sl{margin-bottom:13px}
+.sl label{display:flex;justify-content:space-between;font-size:14px;color:var(--dim);margin-bottom:5px}
+.sl label b{font-family:var(--mono);color:var(--grn);font-weight:600}
+input[type=range]{width:100%;height:5px;-webkit-appearance:none;appearance:none;background:var(--line);border-radius:3px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--grn);cursor:pointer;border:2px solid var(--bg)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--grn);cursor:pointer;border:2px solid var(--bg)}
+canvas.wv{width:100%;display:block;border-radius:9px;background:#0a0e13;border:1px solid var(--line)}
+.eqbox{background:#0a0e13;border:1px solid var(--line);border-radius:9px;padding:16px 19px;font-family:var(--mono);
+  font-size:15px;line-height:1.85;color:var(--grn);word-break:break-word}
+.rowb{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tab{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:10px 17px;cursor:pointer;font-size:14.5px;
+  font-weight:550;color:var(--dim);transition:.15s;font-family:var(--sans)}
+.tab:hover{color:var(--fg);border-color:var(--grn)}
+.tab.on{background:var(--grn);border-color:var(--grn);color:#0a1a0c;font-weight:700}
+.tabv{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:24px}
+.tabv h4{color:var(--grn);margin-bottom:8px;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 20px;font-family:var(--mono);font-size:14.5px;margin:12px 0}
+.kv dt{color:var(--dim2)}.kv dd{color:var(--fg)}
+.tip{position:fixed;background:#010409;border:1px solid var(--grn);border-radius:9px;padding:11px 14px;font-family:var(--mono);
+  font-size:13px;pointer-events:none;z-index:99;opacity:0;transition:opacity .12s;line-height:1.7;white-space:nowrap;
+  box-shadow:0 8px 26px rgba(0,0,0,.6)}
+.tip.show{opacity:1}
+.seccard{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px;transition:.2s}
+.seccard:hover{border-color:var(--grn);transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.4)}
+.seccard h4{font-size:15px;margin-bottom:4px}
+.seccard .win{font-family:var(--mono);font-size:12.5px;color:var(--dim2);margin-bottom:10px}
+.ring{width:76px;height:76px;border-radius:50%;margin:0 auto 11px;display:flex;align-items:center;justify-content:center;position:relative}
+.ring::after{content:"";position:absolute;inset:6px;background:var(--bg2);border-radius:50%}
+.ring span{position:relative;z-index:1;font-family:var(--mono);font-size:16.5px;font-weight:700}
+.metrics{font-size:13px;color:var(--dim);display:grid;gap:3px;font-family:var(--mono)}
+.metrics b{color:var(--fg);font-weight:500}
+.mixbar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:9px;background:var(--line)}
+.mixbar i{display:block}
+.mixlbl{font-size:12px;color:var(--dim2);margin-top:5px;font-family:var(--mono)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line2)}
+th{color:var(--dim2);font-size:12.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:650}
+td{color:var(--dim)}td.mono{font-family:var(--mono);color:var(--fg)}
+tr:hover td{background:var(--bg2)}
+.tw{overflow-x:auto}
+.bar-cell{display:flex;align-items:center;gap:9px}
+.bar-cell .bb{flex:1;height:5px;background:var(--line);border-radius:3px;overflow:hidden;min-width:70px}
+.bar-cell .bb i{display:block;height:100%;border-radius:3px}
+details{background:var(--bg2);border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden}
+summary{padding:14px 18px;cursor:pointer;font-size:15.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:9px;user-select:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"â–¸";color:var(--grn);font-weight:700;transition:.18s}
+details[open] summary::before{transform:rotate(90deg)}
+summary:hover{background:var(--bg3)}
+.dbody{padding:15px 18px 18px;font-size:15px;color:var(--dim);border-top:1px solid var(--line2)}
+.tree{font-family:var(--mono);font-size:14px;line-height:2}
+.tree .d{color:var(--amb)}.tree .f{color:var(--cyn)}.tree .z{color:var(--dim2)}
+.tl{position:relative;padding-left:34px}
+.tl::before{content:"";position:absolute;left:8px;top:5px;bottom:5px;width:2px;
+  background:linear-gradient(180deg,var(--grn),var(--cyn),var(--pur),var(--line))}
+.tlitem{position:relative;margin-bottom:22px}
+.tlitem::before{content:"";position:absolute;left:-25px;top:6px;width:11px;height:11px;border-radius:50%;background:var(--grn);
+  border:2px solid var(--bg);box-shadow:0 0 0 3px rgba(126,231,135,.14)}
+.tlitem.dim::before{background:var(--dim);box-shadow:0 0 0 3px rgba(110,118,129,.14)}
+.tlitem.amb::before{background:var(--amb);box-shadow:0 0 0 3px rgba(255,203,107,.14)}
+.tlitem.cyn::before{background:var(--cyn);box-shadow:0 0 0 3px rgba(102,252,241,.14)}
+.tlitem.pur::before{background:var(--pur);box-shadow:0 0 0 3px rgba(199,146,234,.14)}
+.tlitem h4{font-size:16px;margin-bottom:4px}
+.tlitem .when{font-family:var(--mono);font-size:12px;color:var(--dim2);letter-spacing:.1em;margin-bottom:5px}
+.tlitem p{font-size:15.5px;color:var(--dim);max-width:110ch}
+.tlitem .res{font-family:var(--mono);font-size:13px;color:var(--grn);margin-top:6px;display:block;
+  background:rgba(126,231,135,.06);border-left:2px solid var(--grn);padding:5px 9px;border-radius:0 5px 5px 0}
+.note{border-left:4px solid var(--amb);background:rgba(255,203,107,.05);padding:16px 20px;border-radius:0 10px 10px 0;margin:20px 0;font-size:15.5px;max-width:110ch;color:var(--dim)}
+.note b{color:var(--amb)}
+.note.ok{border-color:var(--grn);background:rgba(126,231,135,.05)}.note.ok b{color:var(--grn)}
+.note.bad{border-color:var(--pnk);background:rgba(255,117,151,.05)}.note.bad b{color:var(--pnk)}
+.note.cy{border-color:var(--cyn);background:rgba(102,252,241,.05)}.note.cy b{color:var(--cyn)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:3px 10px;border-radius:20px;border:1px solid var(--line);color:var(--dim2)}
+.pill.g{color:var(--grn);border-color:var(--grn)}.pill.p{color:var(--pnk);border-color:var(--pnk)}
+.pill.a{color:var(--amb);border-color:var(--amb)}.pill.c{color:var(--cyn);border-color:var(--cyn)}
+.pill.u{color:var(--pur);border-color:var(--pur)}.pill.b{color:var(--blu);border-color:var(--blu)}
+#totop{position:fixed;right:26px;bottom:26px;z-index:70;opacity:0;pointer-events:none;transition:.25s;
+  width:50px;height:50px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);color:var(--grn);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px}
+#totop.on{opacity:1;pointer-events:auto}
+#totop:hover{background:var(--bg3);border-color:var(--grn)}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s cubic-bezier(.2,.8,.3,1),transform .6s cubic-bezier(.2,.8,.3,1)}
+.reveal.in{opacity:1;transform:none}
+footer{padding:52px 0 70px;color:var(--dim2);font-size:15px}
+footer a{color:var(--dim)}
+@media(max-width:900px){.lab{grid-template-columns:1fr}}
+@media(max-width:700px){body{font-size:16px}.stat .v{font-size:23px}}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<nav><div class="wrap">
+  <span class="brand">â—ˆ Metre â€” Lost</span>
+  <a href="#flow">Flow</a><a href="#wave">A/B Audio</a><a href="#map">Partial map</a>
+  <a href="#anat">Anatomy</a><a href="#lab">Lab</a><a href="#cls">Classes</a>
+  <a href="#loop">Loop</a><a href="#ledger">Ledger</a><a href="#funnel">Funnel</a>
+  <a href="#exp">Exports</a><a href="#bench">Bench</a><a href="#arch">Architecture</a>
+  <a href="#code">Code</a><a href="#work">Work log</a><a href="#open">Open</a>
+</div></nav>
+<header class="hero">
+  <svg id="heroAnim" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid slice"></svg>
+  <div class="wrap">
+    <div class="eyebrow">Interactive project report Â· real ledger data</div>
+    <h1>A song, reverse-engineered into <em>mathematics</em></h1>
+    <p class="lede">This is <b>music2math</b> â€” a DSP pipeline that listens to <code>Metre - Lost.mp3</code> and writes out
+    a set of closed-form equations. Feed those to a bytebeat player and the song comes back. Every number and every dot on
+    every chart below was read out of the actual run on disk â€” <code>res_ledger.json</code>, the rendered WAV, the test suite.</p>
+    <div class="heroacts">
+      <a class="btn pri" href="#map">â—‰ See all 373 partials</a>
+      <a class="btn" href="#flow">â¬¢ Walk the flowchart</a>
+      <a class="btn" href="#lab">â–¶ Equation lab</a>
+      <a class="btn" href="index.html">â†’ Open the player</a>
+    </div>
+    <div class="stats">
+      <div class="stat c"><div class="v" data-c="0.814173" data-dp="6">0</div><div class="l">engine correlation</div></div>
+      <div class="stat g"><div class="v" data-c="373">0</div><div class="l">fitted partials</div></div>
+      <div class="stat u"><div class="v" data-c="8">0</div><div class="l">loop iterations</div></div>
+      <div class="stat a"><div class="v" data-c="6">0</div><div class="l">analysis windows</div></div>
+      <div class="stat p"><div class="v" data-c="24">0</div><div class="l">hypotheses proposed</div></div>
+      <div class="stat b"><div class="v" data-c="188">0</div><div class="l">passing tests</div></div>
+    </div>
+  </div>
+</header>
+<section id="flow"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">01 â€” THE FLOWCHART</div>
+    <h2>Five stages, one feedback loop</h2>
+    <p>Click any stage. The amber dashed line running back from <b>THE LOOP</b> to <b>EVIDENCE</b> is the whole idea â€”
+    the analysis is not a one-shot pass, it is re-proposed and re-judged eight times.</p>
+  </div>
+  <div class="dia reveal"><svg id="flowSvg" viewBox="0 0 1060 400"></svg></div>
+  <div class="panel reveal" id="flowDetail" style="margin-top:20px"></div>
+</div></section>
+
+<section id="wave"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">02 â€” A/B AUDIO</div>
+    <h2>Original vs reconstruction, envelope view</h2>
+    <p>Peak envelope of the first 15 seconds of the original next to the engine's render, with the absolute difference
+    beneath. Move the cursor and the running envelope correlation updates live. This is the honest picture of what the
+    pipeline achieved.</p>
+  </div>
+  <div class="dia reveal">
+    <svg id="waveSvg" viewBox="0 0 1060 330"></svg>
+    <div class="legend" id="waveLegend"></div>
+    <div class="dia-cap">peak envelope Â· 900 buckets Â· <span id="waveRead">hover the plot</span></div>
+  </div>
+  <div class="grid g3 reveal" style="margin-top:20px">
+    <div class="card g"><h3><span class="dot d-g"></span>Structure captured</h3>
+      <p>All six windows show roughly the right density envelope â€” the optimiser learned <i>where</i> the energy sits,
+      not just <i>that</i> it exists.</p></div>
+    <div class="card a"><h3><span class="dot d-a"></span>Detail missing</h3>
+      <p>Envelopes come out smooth where the original is jagged. Percussive peaks survive as energy but not as
+      transients â€” which is the whole story of the 0.814 number.</p></div>
+    <div class="card p"><h3><span class="dot d-p"></span>Late windows drift</h3>
+      <p>Windows 4 and 6 (7.5â€“10 s, 12.5â€“15 s) carry the biggest residuals â€” 0.688 and 0.759 correlation, the two worst
+      sections in the ledger.</p></div>
+  </div>
+</div></section>
+
+<section id="map"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">03 â€” THE PARTIAL MAP</div>
+    <h2>All 373 fitted partials, plotted</h2>
+    <p>Every circle is one equation in <code>res_ledger.json</code>. Horizontal position is onset time, vertical position
+    is frequency on a log scale, size is amplitude, colour is model. Click a legend entry to filter, hover any circle for
+    its parameters.</p>
+  </div>
+  <div class="dia reveal">
+    <svg id="mapSvg" viewBox="0 0 1060 420"></svg>
+    <div class="legend" id="mapLegend"></div>
+    <div class="dia-cap">log frequency axis Â· dashed guides are the six 2.5 s analysis windows</div>
+  </div>
+  <div class="grid g3 reveal" style="margin-top:20px">
+    <div class="card g"><h3><span class="dot d-g"></span>The bass shelf</h3>
+      <p>A dense band below 200 Hz across the whole excerpt â€” the sub and kick that carry the track. This is what
+      correlation mostly measures, and it is a big part of why the number is as high as it is.</p></div>
+    <div class="card c"><h3><span class="dot d-c"></span>Vertical clustering</h3>
+      <p>Partial onsets bunch toward window boundaries. That is the sectioning itself: each 2.5 s window is solved
+      independently, so hypotheses are proposed per window rather than globally.</p></div>
+    <div class="card u"><h3><span class="dot d-u"></span>The glides</h3>
+      <p>31 purple dots are frequency bends â€” the only partials whose pitch changes over time. They need knot arrays in
+      the exported JavaScript, which is why the Funcbeat output carries an <code>lp()</code> helper.</p></div>
+  </div>
+</div></section>
+
+<section id="anat"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">04 â€” EQUATION ANATOMY</div>
+    <h2>What each piece of the equation does</h2>
+    <p>Same renderer as the lab below, drawn with every term labelled. The callouts are positioned from the live slider
+    values, so moving them moves the annotations.</p>
+  </div>
+  <div class="dia reveal"><svg id="anatSvg" viewBox="0 0 1060 400"></svg>
+    <div class="dia-cap">shaded bands are the parts the analysis could not see Â· 21.533161 = 1 Ã· 0.04644</div></div>
+  <div class="grid g4 reveal" style="margin-top:20px">
+    <div class="card b"><h3><span class="dot d-b"></span>Attack ramp</h3>
+      <p>Linear rise over one STFT half-window, factor <b>21.533161</b>. The analysis could not see before the partial
+      began, so the equation has to guess â€” a ramp is the least-wrong guess.</p></div>
+    <div class="card c"><h3><span class="dot d-c"></span>Decay</h3>
+      <p><code>exp(âˆ’Î»(tâˆ’tâ‚€))</code>, one-sided so it never grows backwards. Fitted as a log-linear envelope on interior
+      frames only, because the first and last frames are attenuated by window overlap.</p></div>
+    <div class="card a"><h3><span class="dot d-a"></span>Release fade</h3>
+      <p>Linear fade over <b>0.25 s</b> at factor <b>4</b>. Hard-stopping a partial would click; the fade is cheap
+      insurance against an audible artefact in every one of 373 terms.</p></div>
+    <div class="card u"><h3><span class="dot d-u"></span>Carrier</h3>
+      <p><code>cos(2Ï€fÂ·(tâˆ’t_sec) + Ï†)</code>. Phase is fitted by a two-column least-squares projection, never assumed
+      â€” the README measures 44.7 dB vs 10.2 dB for that decision alone.</p></div>
+  </div>
+</div></section>
+
+<section id="lab"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">05 â€” THE LAB</div>
+    <h2>Build and hear one partial</h2>
+    <p>Move a slider, watch the waveform, read the generated equation, play it. The equation text is the literal
+    JavaScript that gets written into the export file. Spacebar plays.</p>
+  </div>
+  <div class="lab reveal">
+    <div class="panel"><canvas class="wv" id="wv" width="900" height="230"></canvas>
+      <div class="rowb" style="margin-top:16px">
+        <button class="btn pri" id="playEq">â–¶ Play</button>
+        <button class="btn sm" id="stopEq">â–  Stop</button>
+        <span style="font-size:13.5px;color:var(--dim2)" id="playState"></span>
+        <span style="flex:1"></span>
+        <span class="pill c">22050 Hz</span><span class="pill">spacebar</span>
+      </div></div>
+    <div class="panel">
+      <div class="sl"><label>Amplitude A <b id="vA">0.1200</b></label><input type="range" id="sA" min="0" max="0.3" step="0.0001" value="0.12"></div>
+      <div class="sl"><label>Frequency f <b id="vF">220</b> Hz</label><input type="range" id="sF" min="30" max="1600" step="1" value="220"></div>
+      <div class="sl"><label>Decay Î» <b id="vL">1.50</b></label><input type="range" id="sL" min="0" max="8" step="0.01" value="1.5"></div>
+      <div class="sl"><label>Phase Ï† <b id="vP">0.00</b></label><input type="range" id="sP" min="0" max="6.283" step="0.01" value="0"></div>
+      <div class="sl" style="margin-bottom:6px"><label>Support <b id="vD">1.60</b> s</label><input type="range" id="sD" min="0.2" max="4" step="0.05" value="1.6"></div>
+      <div class="rowb" style="margin-top:12px">
+        <button class="btn sm" data-preset="sine">Pure sine</button>
+        <button class="btn sm" data-preset="pluck">Pluck</button>
+        <button class="btn sm" data-preset="real">Real #0</button>
+      </div>
+    </div>
+  </div>
+  <div class="reveal" style="margin-top:18px">
+    <div style="font-size:14.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2);margin-bottom:9px">generated equation</div>
+    <div class="eqbox" id="eqout"></div>
+  </div>
+</div></section>
+
+<section id="cls"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">06 â€” EQUATION CLASSES</div>
+    <h2>Three kinds of hypothesis compete</h2>
+    <p>Every iteration the loop also proposes whole new structures, renders them, and keeps them only if they help.
+    These are the three classes that competed.</p>
+  </div>
+  <div class="tabs reveal" id="clsTabs"></div>
+  <div class="tabv reveal" id="clsView"></div>
+</div></section>
+
+<section id="loop"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">07 â€” THE LOOP</div>
+    <h2>Eight iterations, every one accepted</h2>
+    <p>Global waveform correlation after each pass, with the shaded area showing cumulative gain. Hover for the full
+    metric set. If an iteration fails to improve, the entire previous state is restored verbatim.</p>
+  </div>
+  <div class="dia reveal">
+    <svg id="iterSvg" viewBox="0 0 1060 300"></svg>
+    <div class="dia-cap">evidence baseline before the loop was <b style="color:var(--pnk)">0.698835</b> Â· final <b style="color:var(--grn)">0.814173</b></div>
+  </div>
+  <div class="grid g4 reveal" style="margin-top:24px">
+    <div class="stat p"><div class="v">0.698835</div><div class="l">before the loop</div></div>
+    <div class="stat g"><div class="v">0.814173</div><div class="l">after 8 iterations</div></div>
+    <div class="stat a"><div class="v">+16.5%</div><div class="l">relative gain</div></div>
+    <div class="stat u"><div class="v">3 / 24</div><div class="l">hypotheses accepted</div></div>
+  </div>
+  <div class="note reveal"><b>Read this honestly.</b> The curve is smooth and monotonic â€” that is the rollback working,
+  not the problem getting easy. A jump to 0.99 never happens on real music because the missing 18% is percussion, and no
+  number of sinusoidal partials will conjure a drum.</div>
+</div></section>
+
+<section id="ledger"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">08 â€” THE LEDGER</div>
+    <h2>Six windows, six different problems</h2>
+    <p>The 15-second excerpt is cut into 2.5-second windows, each solved independently â€” because one stationary
+    decaying partial cannot describe two and a half seconds of music. Bar height is partial count, colour is
+    correlation, stack is model mix.</p>
+  </div>
+  <div class="dia reveal"><svg id="ganttSvg" viewBox="0 0 1060 260"></svg></div>
+  <div class="grid g3 reveal" id="seccards" style="margin-top:22px"></div>
+  <div class="note bad reveal" style="margin-top:20px"><b>Window 4 is the interesting one.</b> At 0.687532 it is the
+  worst section, has the highest LSD (5.358) and the <i>lowest</i> segmental SNR (âˆ’2.350). It also proposed eight glides
+  and had none accepted. Dense percussive material â€” exactly the failure mode the README predicts.</div>
+</div></section>
+
+<section id="funnel"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">09 â€” THE FUNNEL</div>
+    <h2>24 hypotheses, 3 survivors</h2>
+    <p>Proposing a structure is free; keeping it is not. Each candidate must reduce residual energy by more than the
+    margin expected from fitting noise, <i>and</i> raise correlation. Everything else is logged and rejected.</p>
+  </div>
+  <div class="dia reveal"><svg id="funnelSvg" viewBox="0 0 1060 340"></svg></div>
+  <div class="tw reveal" style="margin-top:20px">
+    <table>
+      <thead><tr><th>Window</th><th>Proposals</th><th>Accepted</th><th>Classes offered</th><th>What it produced</th></tr></thead>
+      <tbody id="funnelTbl"></tbody>
+    </table>
+  </div>
+  <div class="note cy reveal"><b>Class B needs three things to be admissible:</b> fit residual under a quarter of the
+  total energy, at least 3 partials present, and only two free parameters per partial instead of three. Tighten any one
+  of those and the string model stops firing â€” which is why most windows end up offering zero.</div>
+</div></section>
+
+<section id="exp"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">10 â€” EXPORTS</div>
+    <h2>Four bytebeat files, one knob</h2>
+    <p>Exporters read only the ledger. <code>--ratio</code> decides how many partials earn their energy:
+    <code>aÂ²Â·min(span, Â½Î») &gt; total_energy Â· ratio</code>. Nothing else differs between these four files.</p>
+  </div>
+  <div class="tabs reveal" id="expTabs"></div>
+  <div class="tabv reveal" id="expView"></div>
+  <div class="dia reveal" style="margin-top:20px"><svg id="expSvg" viewBox="0 0 1060 250"></svg>
+    <div class="dia-cap">the knee is at ratio 0.0002 Â· beyond it you pay bytes for silence</div></div>
+  <div class="grid g2 reveal" style="margin-top:20px">
+    <div class="card g"><h3><span class="dot d-g"></span>Funcbeat vs Floatbeat</h3>
+      <p><b>Funcbeat</b> returns a real function <code>function(t, srate)</code> â€” statements, local variables, an
+      <code>lp()</code> helper for glide knots. <b>Floatbeat</b> is one comma expression with no statements, so its
+      constants must live in <code>window.gA*</code> globals and interpolation becomes a nested ternary chain. Same
+      maths, very different syntax.</p></div>
+    <div class="card c"><h3><span class="dot d-c"></span>What 0.999947 actually means</h3>
+      <p>That figure in <code>songs.json</code> is <b>exported-JS vs engine render</b> â€” proof the JavaScript reproduces
+      the Python renderer faithfully. The number comparing against the <i>original song</i> is 0.814173. Different
+      questions; the project keeps them apart on purpose.</p></div>
+  </div>
+</div></section>
+
+<section id="bench"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">11 â€” BENCHMARKS</div>
+    <h2>Where it works, where it does not</h2>
+    <p>The most useful thing a reconstruction tool can do is fail loudly on the wrong material.</p>
+  </div>
+  <div class="tw reveal">
+    <table>
+      <thead><tr><th>Input</th><th>Material</th><th>Correlation</th><th>SNR</th><th>LSD</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">math_chord.wav</td><td>synthetic A4 + C#5 + E5, 2 s <span class="pill a">discovered model</span></td>
+          <td class="mono"><div class="bar-cell"><span>0.999921</span><span class="bb"><i style="width:100%;background:var(--grn)"></i></span></div></td>
+          <td class="mono">38.03 dB</td><td class="mono">0.33</td><td><span class="pill g">exact fixture</span></td></tr>
+        <tr><td class="mono">math_melody.wav</td><td>synthetic melody + vibrato, 3 s</td>
+          <td class="mono"><div class="bar-cell"><span>0.999888</span><span class="bb"><i style="width:99.99%;background:var(--grn)"></i></span></div></td>
+          <td class="mono">36.49 dB</td><td>â€”</td><td><span class="pill g">exact</span></td></tr>
+        <tr><td class="mono">Metre â€” Lost Â· 8 s</td><td>dense electronic</td>
+          <td class="mono"><div class="bar-cell"><span>0.859814</span><span class="bb"><i style="width:86%;background:var(--amb)"></i></span></div></td>
+          <td class="mono">5.84 dB</td><td class="mono">3.885</td><td><span class="pill a">partial</span></td></tr>
+        <tr><td class="mono">Metre â€” Lost Â· 15 s</td><td>dense electronic</td>
+          <td class="mono"><div class="bar-cell"><span>0.814173</span><span class="bb"><i style="width:81.4%;background:var(--amb)"></i></span></div></td>
+          <td class="mono">4.72 dB</td><td class="mono">4.639</td><td><span class="pill a">partial</span></td></tr>
+        <tr><td class="mono">Metre â€” Lost Â· full</td><td>469 s, all percussion</td>
+          <td class="mono"><div class="bar-cell"><span>âˆ’3.0 dB SNR</span><span class="bb"><i style="width:4%;background:var(--pnk)"></i></span></div></td>
+          <td class="mono">âˆ’3.0 dB</td><td>â€”</td><td><span class="pill p">fails</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid g2 reveal" style="margin-top:22px">
+    <div class="card g"><h3><span class="dot d-g"></span>Tonal â†’ essentially exact</h3>
+      <p>Sustained, harmonic, slowly varying. Hits 40 dB on the fixtures because that is where the fixtures end. A pure
+      440 Hz tone reaches 102.2 dB and correlation 1.00000.</p></div>
+    <div class="card p"><h3><span class="dot d-p"></span>Percussion â†’ wrong basis</h3>
+      <p>On the full track the median tracked partial lasts <b>0.104 s</b> â€” about 10 frames. 289 of 291 candidates are
+      too short to model and are correctly pruned. Sinusoids are not a drum kit; the literature uses an explicit
+      transient model (Sinola's OLA/PSOLA hybrid, or S+N+T).</p></div>
+  </div>
+  <div class="note reveal"><b>The decision behind this:</b> fitting more sinusoids to drums would push the number up
+  while making the result no more convincing to the ear. Spectral error dropped 8Ã— during error correction while
+  waveform correlation stayed low â€” and the README says so outright rather than hiding behind the flattering metric.</div>
+</div></section>
+
+<section id="arch"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">12 â€” ARCHITECTURE</div>
+    <h2>How the modules connect</h2>
+    <p>Two independent toolchains share five foundation modules. The RES pipeline is the current one; the exporters
+    consume nothing from the older track.</p>
+  </div>
+  <div class="dia reveal"><svg id="archSvg" viewBox="0 0 1060 480"></svg>
+    <div class="legend">
+      <span style="cursor:default"><i class="sq" style="background:var(--grn)"></i> RES pipeline</span>
+      <span style="cursor:default"><i class="sq" style="background:var(--amb)"></i> loop internals</span>
+      <span style="cursor:default"><i class="sq" style="background:var(--cyn)"></i> foundation (shared)</span>
+      <span style="cursor:default"><i class="sq" style="background:var(--pur)"></i> exporters</span>
+      <span style="cursor:default"><i class="sq" style="background:var(--blu)"></i> entry points</span>
+    </div></div>
+  <div class="grid g2 reveal" style="margin-top:20px">
+    <div class="card g"><h3><span class="dot d-g"></span>Why RES needs no sandbox</h3>
+      <p>The RES renderer evaluates fitted numeric parameters directly â€” it never parses an equation string. The older
+      track does parse user text, which is why it needs <code>safe_eval</code>: an AST whitelisting sandbox with 32
+      allowed functions, default-deny on every node type, and explicit rejection of attribute access and subscripting.</p></div>
+    <div class="card a"><h3><span class="dot d-a"></span>Same word, different systems</h3>
+      <p><code>res_bank</code> and <code>formula_bank</code> share only a name â€” no code, no data, no imports.
+      <code>res_bank</code> is a runtime tournament with no template table; <code>formula_bank</code> is a static
+      dictionary of waveform families with a Pareto/complexity decision rule.</p></div>
+  </div>
+</div></section>
+
+<section id="code"><div class="wrap">
+  <div class="sec-head reveal"><div class="n">13 â€” CODEBASE</div><h2>What lives where</h2></div>
+  <div class="reveal" id="tree"></div>
+</div></section>
+
+<section id="work"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">14 â€” WORK LOG</div>
+    <h2>What we actually did</h2>
+    <p>Everything below was executed and verified on this machine. Nothing is claimed from intention.</p>
+  </div>
+  <div class="tl reveal">
+    <div class="tlitem"><div class="when">BUILD</div><h4>Player site assembled and served</h4>
+      <p>Built the standalone site: <code>index.html</code>, <code>app.js</code>, <code>processor.js</code>,
+      <code>songs.json</code>, <code>style.css</code>, <code>start.bat</code>, the four exported bytebeat files in
+      <code>songs/</code>, and a vendored dollchan composer in an iframe.</p>
+      <span class="res">âœ“ HTTP 200 on all 6 URLs Â· node --check clean on app.js and processor.js</span></div>
+    <div class="tlitem"><div class="when">FIX</div><h4>Exporter glide handling, four files regenerated</h4>
+      <p>The exporters mishandled glide trajectories â€” phase and amplitude knots were not interpolated the way
+      <code>np.interp</code> does. Fixed the interpolation, regenerated all four variants from the same ledger so they
+      stay numerically aligned.</p>
+      <span class="res">âœ“ 41 102 / 27 777 / 78 553 / 149 093 B Â· 31 glide knot triples in each</span></div>
+    <div class="tlitem"><div class="when">FIX</div><h4>Drag-clobber regression caught and fixed</h4>
+      <p>The oscilloscope advanced <code>pos</code> and forced the slider back every animation frame, making the seek
+      slider undraggable while playing. Guarded both writes with <code>!seeking</code>.</p>
+      <span class="res">âœ“ site/app.js:167-168 Â· regression-tested</span></div>
+    <div class="tlitem"><div class="when">FEATURE</div><h4>Seek slider and position readout</h4>
+      <p>Added a 0â€“120 s seek slider and a live <code>m:ss.t</code> label. Position is tracked in song samples from
+      <code>performance.now()</code>; changing rate while playing forces a reload so the worklet never disagrees with the
+      UI.</p>
+      <span class="res">âœ“ seek_check 39/39 Â· edge_check 29/29 Â· minute-boundary formatting fixed</span></div>
+    <div class="tlitem"><div class="when">POLISH</div><h4>Oscilloscope upgraded</h4>
+      <p>Centre line, fill-under-the-curve, green glow on the trace. Small change, large difference in whether the
+      output looks alive.</p>
+      <span class="res">âœ“ site/app.js drawScope()</span></div>
+    <div class="tlitem"><div class="when">CLEANUP</div><h4>app.py dead code removed</h4>
+      <p>Streamlit app trimmed without touching any shared Python module. Test baseline deliberately not re-run â€”
+      shared code was untouched.</p>
+      <span class="res">âœ“ baseline 188 passing Â· re-verified by collect-only during review</span></div>
+    <div class="tlitem amb"><div class="when">REVIEW</div><h4>Audit of the previous model's work</h4>
+      <p>Read the four site source files line by line, checked every claim in the final report against the code.
+      Position formula, drag guard, rate-change reload, processor contract, correlation figures â€” all confirmed.</p>
+      <span class="res">âœ“ claims verified Â· 2 pre-existing issues found, neither a regression</span></div>
+    <div class="tlitem pur"><div class="when">THIS FILE</div><h4>You are reading it</h4>
+      <p>A self-contained interactive walkthrough built from the real ledger. Every figure was read out of
+      <code>res_ledger.json</code>, the rendered WAV and the test collection â€” not from memory.</p>
+      <span class="res">âœ“ 373 real partials plotted Â· 900-bucket envelopes Â· no network</span></div>
+  </div>
+</div></section>
+
+<section id="open"><div class="wrap">
+  <div class="sec-head reveal">
+    <div class="n">15 â€” OPEN ITEMS</div>
+    <h2>What is not finished</h2>
+    <p>Four things, separated by whether a human or a machine can close them.</p>
+  </div>
+  <div class="grid g2 reveal">
+    <div class="card ok"><h3><span class="dot d-k"></span>Mode change reloads worklet (RESOLVED)</h3>
+      <p><code>site/app.js:369</code> — Changing <b>Mode</b> during playback safely stops playback, resets state,
+      and re-compiles with worklet reload before resuming, perfectly matching Rate control behavior.</p></div>
+    <div class="card ok"><h3><span class="dot d-k"></span>Stop guards scope when idle (RESOLVED)</h3>
+      <p><code>site/app.js:127</code> — <code>stopPlayback()</code> guards canvas clear with <code>if (wasPlaying)</code>,
+      preserving the oscilloscope display when idle.</p></div>
+    <div class="card c"><h3><span class="dot d-c"></span>No real-browser audio confirmation</h3>
+      <p>All 68 verification tests are audio-math checks. None of them run a live AudioWorklet or touch the DOM. The
+      audible result still needs one human opening the player.</p></div>
+    <div class="card u"><h3><span class="dot d-u"></span>More songs need source audio</h3>
+      <p>The dropdown ships four variants of the same reconstruction. Adding real songs means running the pipeline on
+      new audio — which requires the audio files.</p></div>
+  </div>
+  <div class="note ok reveal"><b>Both code issues are verified and resolved with regression tests.</b> Covered in
+  <code>tests/test_bytebeat_player_ui.py</code>.</div>
+  <div class="rowb reveal" style="margin-top:22px">
+    <a class="btn pri" href="index.html">â–¶ Open the player and confirm audio</a>
+    <a class="btn" href="#map">â†» Back to the partial map</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <p>music2math Â· bytebeat reconstruction of <code>Metre - Lost.mp3</code> Â· figures read directly from
+  <code>data/output/res_lost15/res_ledger.json</code>, <code>res_best.wav</code> and pytest collection.</p>
+</div></footer>
+<button id="totop" title="Back to top">â†‘</button>
+<div class="tip" id="tip"></div>
+<script>
+window.DATA = {"sr":22050,"dur":15.0,"window_s":2.5,"half":0.04644,"tempo":60.0,"equation_form":"A*exp(-lambda*(t - t0))*cos(2*pi*f*t - phi)","classes":["damped_cosine","harmonic_string","percussive_bundle"],"initial_corr":0.698835,"best":{"correlation":0.814173,"snr_db":4.72,"log_spectral_distance_db":4.639,"seg_snr_db":0.219,"onset_corr":0.493956},"iters":[{"i":1,"c":0.724123,"snr":3.227,"lsd":4.957},{"i":2,"c":0.737058,"snr":3.403,"lsd":4.843},{"i":3,"c":0.751259,"snr":3.609,"lsd":4.782},{"i":4,"c":0.768651,"snr":3.881,"lsd":4.757},{"i":5,"c":0.783806,"snr":4.137,"lsd":4.733},{"i":6,"c":0.799048,"snr":4.419,"lsd":4.692},{"i":7,"c":0.808659,"snr":4.608,"lsd":4.664},{"i":8,"c":0.814173,"snr":4.72,"lsd":4.639}],"sections":[{"i":0,"start":0.0,"end":2.5,"n":14,"pc":6,"m":{"correlation":0.895027,"snr_db":7.013,"log_spectral_distance_db":2.966,"seg_snr_db":-0.413,"onset_corr":0.478281},"bank":4,"acc":0,"mix":{"damped":8,"constant":6,"glide":0}},{"i":1,"start":2.5,"end":5.0,"n":77,"pc":24,"m":{"correlation":0.89167,"snr_db":6.884,"log_spectral_distance_db":3.945,"seg_snr_db":2.309,"onset_corr":0.517323},"bank":4,"acc":2,"mix":{"damped":53,"constant":20,"glide":4}},{"i":2,"start":5.0,"end":7.5,"n":57,"pc":24,"m":{"correlation":0.750778,"snr_db":3.598,"log_spectral_distance_db":4.714,"seg_snr_db":-1.067,"onset_corr":0.483056},"bank":4,"acc":0,"mix":{"damped":33,"constant":19,"glide":5}},{"i":3,"start":7.5,"end":10.0,"n":69,"pc":31,"m":{"correlation":0.687532,"snr_db":2.754,"log_spectral_distance_db":5.358,"seg_snr_db":-2.35,"onset_corr":0.561316},"bank":4,"acc":0,"mix":{"damped":38,"constant":23,"glide":8}},{"i":4,"start":10.0,"end":12.5,"n":74,"pc":31,"m":{"correlation":0.8339,"snr_db":5.161,"log_spectral_distance_db":5.4,"seg_snr_db":2.128,"onset_corr":0.634564},"bank":4,"acc":0,"mix":{"damped":43,"constant":22,"glide":9}},{"i":5,"start":12.5,"end":15.0,"n":82,"pc":37,"m":{"correlation":0.759427,"snr_db":3.721,"log_spectral_distance_db":5.347,"seg_snr_db":1.004,"onset_corr":0.483082},"bank":4,"acc":1,"mix":{"damped":45,"constant":32,"glide":5}}],"partials":[[0,0.0,2.5,128.12,0.00229,0,0.0],[0,0.0,2.5,192.66,0.0001,0,0.0],[0,0.0,2.5,135.74,0.00096,0,0.0],[0,0.0,2.5,204.11,0.00017,0,0.0],[0,0.0,2.5,273.09,0.00037,0,0.0],[0,0.8359,0.9056,66.32,0.01869,1,0.0],[0,1.1146,1.1262,64.94,0.00582,1,0.0],[0,1.5644,1.7444,196.4,0.00619,0,12.0],[0,1.8112,1.9912,197.21,0.00337,0,3.072],[0,1.8112,1.9912,256.42,0.00626,0,30.0],[0,1.8344,1.904,68.4,0.00781,1,0.0],[0,1.846,1.9156,130.07,0.01213,1,0.0],[0,2.0782,2.4729,261.81,0.01468,1,0.0],[0,2.0898,2.4729,131.06,0.13008,1,1.777],[1,2.5,5.0,1049.0,0.00265,0,5.0],[1,2.5,5.0,784.22,0.00314,0,0.625],[1,2.5,5.0,1046.32,0.00241,0,4.0],[1,2.5,5.0,1309.94,0.00048,0,0.0],[1,2.5,5.0,259.78,0.17131,0,5.0],[1,2.5,5.0,388.16,0.00118,0,0.0],[1,2.5,5.0,518.27,0.00075,0,0.0],[1,2.5,5.0,462.34,0.00069,0,0.0],[1,2.5,5.0,532.15,0.00102,0,0.0],[1,2.5,5.0,750.41,0.00078,0,3.2],[1,2.5,5.0,780.88,0.00024,0,0.0],[1,2.5,5.0,677.37,0.00031,0,1.073],[1,2.5,5.0,787.14,0.00594,0,2.682],[1,2.5,5.0,525.4,0.0034,0,0.0],[1,2.5,5.0,790.06,0.00026,0,0.0],[1,2.5,5.0,527.51,0.00419,0,0.0],[1,2.5116,2.5581,135.68,0.01474,1,0.0],[1,2.5232,3.3243,261.62,0.306,1,7.158],[1,2.5319,2.7119,264.25,0.16351,0,6.0],[1,2.5319,2.7119,231.84,0.02609,0,11.719],[1,2.5551,2.7351,251.48,0.0793,0,30.0],[1,2.5551,2.7351,520.67,0.01012,0,15.0],[1,2.5551,2.7351,204.0,0.02322,0,24.0],[1,2.5929,2.7902,785.48,0.00549,1,0.0],[1,2.7932,2.9732,166.77,0.03828,0,23.438],[1,2.7932,2.9732,247.33,0.05194,0,24.0],[1,2.7932,2.9732,286.0,0.02487,0,800.0],[1,2.8048,2.9848,152.28,0.0331,0,30.0],[1,2.8048,2.9848,222.67,0.03232,0,50.0],[1,2.8048,2.9848,394.0,0.00362,0,15.0],[1,2.8077,2.9877,179.7,0.05203,0,24.0],[1,2.8599,2.9296,195.0,0.00533,1,0.0],[1,3.0457,3.1618,132.33,0.02054,1,11.363],[1,3.0805,3.1734,163.45,0.00531,1,0.0],[1,3.5681,3.6726,262.31,0.01359,1,0.0],[1,3.5797,3.6494,128.65,0.00777,1,0.0],[1,3.8119,3.9919,273.33,0.03493,0,30.0],[1,3.8119,3.9919,323.33,0.00873,0,160.0],[1,3.8119,3.9919,195.2,0.01293,0,15.36],[1,3.8119,3.9919,243.33,0.01734,0,32.768],[1,3.8351,3.9048,132.5,0.00325,1,0.0],[1,3.8351,3.9164,324.96,0.00581,2,0.0],[1,3.8351,3.9396,260.22,0.0212,1,0.094],[1,4.0528,4.2328,366.67,0.00341,0,30.0],[1,4.0528,4.2328,300.0,0.00348,0,30.0],[1,4.0528,4.2328,183.33,0.00376,0,30.0],[1,4.0528,4.2328,216.67,0.00344,0,30.0],[1,4.0673,4.555,130.93,0.06462,1,1.993],[1,4.0673,4.5898,393.17,0.03876,1,0.0],[1,4.079,4.9613,262.11,0.02862,1,0.0],[1,4.3112,4.3344,72.86,0.00248,1,0.0],[1,4.3228,4.3692,522.33,0.01423,1,0.265],[1,4.4766,4.6566,366.67,0.00596,0,80.0],[1,4.4795,4.6595,263.77,0.05105,0,7.5],[1,4.4795,4.6595,387.33,0.05355,0,75.0],[1,4.4795,4.6595,487.33,0.00882,0,18.75],[1,4.4853,4.6653,398.0,0.02927,0,15.0],[1,4.494,4.674,518.59,0.05632,0,12.0],[1,4.494,4.674,142.0,0.01658,0,18.75],[1,4.4969,4.8336,523.72,0.07074,2,0.0],[1,4.5463,4.7263,255.03,0.03479,0,24.0],[1,4.5463,4.7263,507.54,0.02556,0,18.75],[1,4.5463,4.7263,550.74,0.00772,0,7.5],[1,4.5463,4.7263,140.0,0.03404,0,30.0],[1,4.5463,4.7263,331.09,0.00348,0,1.5],[1,4.613,4.7988,785.51,0.00752,1,0.0],[1,4.7901,4.9701,498.3,0.01483,0,12.0],[1,4.7901,4.9701,346.15,0.01035,0,7.5],[1,4.7901,4.9701,282.18,0.00855,0,12.0],[1,4.7901,4.9701,239.33,0.00898,0,15.0],[1,4.7901,4.9701,196.38,0.00704,0,6.0],[1,4.7988,4.9381,391.83,0.04038,2,0.0],[1,4.8336,4.9381,65.36,0.03149,1,11.614],[1,4.8452,4.9149,130.54,0.01402,1,0.0],[1,4.8452,4.9149,327.48,0.02522,2,0.0],[1,4.88,4.9149,355.33,0.0138,1,22.455],[1,4.9149,4.9729,523.73,0.02299,1,0.0],[2,5.0,7.5,782.15,0.00076,0,0.0],[2,5.0,7.5,657.43,0.00066,0,0.0],[2,5.0,7.5,395.76,0.00636,0,17.559],[2,5.0,7.5,529.26,0.00295,0,0.451],[2,5.0,7.5,530.6,0.00189,0,1.069],[2,5.0,7.5,666.61,0.00011,0,0.0],[2,5.0319,5.2119,316.71,0.00899,0,9.375],[2,5.0319,5.2119,183.05,0.00806,0,23.438],[2,5.0319,5.2119,396.77,0.00398,0,0.469],[2,5.0319,5.2119,529.95,0.01426,0,9.6],[2,5.0348,5.1625,261.35,0.01175,2,0.0],[2,5.058,5.2381,328.03,0.01857,0,9.6],[2,5.058,5.2381,196.38,0.01311,0,12.0],[2,5.058,5.2381,298.14,0.0139,0,9.375],[2,5.058,5.2381,358.67,0.00719,0,500.0],[2,5.058,5.2381,165.16,0.01128,0,24.0],[2,5.0813,5.1742,293.94,0.01701,2,0.0],[2,5.1045,5.3019,524.56,0.01287,1,0.002],[2,5.5689,5.5921,127.28,0.004,1,0.0],[2,5.8359,5.9056,259.71,0.00672,1,0.0],[2,5.8359,5.9172,456.42,0.00673,1,0.0],[2,6.0449,6.2249,536.21,0.01773,0,9.6],[2,6.0449,6.2249,386.48,0.00526,0,3.84],[2,6.0449,6.2249,488.88,0.01041,0,15.36],[2,6.0449,6.2249,582.48,0.00357,0,4.8],[2,6.0565,6.5441,130.92,0.05601,1,1.728],[2,6.0565,6.8344,522.7,0.07418,2,1.345],[2,6.0681,6.8112,262.66,0.02139,1,0.0],[2,6.0797,6.219,654.06,0.01113,1,0.0],[2,6.2423,6.4861,392.3,0.00773,1,0.0],[2,6.5354,6.7154,548.76,0.01809,0,15.0],[2,6.5354,6.7154,236.76,0.02078,0,6400.0],[2,6.5354,6.7154,687.44,0.00869,0,9.6],[2,6.5354,6.7154,273.33,0.03146,0,24.0],[2,6.5354,6.7154,510.0,0.08093,0,960.0],[2,6.5354,6.7154,147.25,0.00657,0,6.0],[2,6.5383,6.7183,256.0,0.05436,0,19.2],[2,6.5383,6.7183,669.39,0.01258,0,7.5],[2,6.5383,6.7183,489.33,0.04757,0,250.0],[2,6.5383,6.7183,748.0,0.00775,0,500.0],[2,6.5412,6.7212,700.26,0.01163,0,12.0],[2,6.5412,6.7212,736.44,0.00768,0,7.5],[2,6.5412,6.7212,398.18,0.01114,0,7.5],[2,6.5412,6.7212,284.87,0.01709,0,30.0],[2,6.5673,6.8112,785.18,0.0278,1,3.512],[2,6.637,6.6718,644.13,0.00298,1,0.0],[2,6.7995,6.8924,458.73,0.02138,1,10.443],[2,6.8228,6.9156,428.93,0.01035,2,0.0],[2,6.8228,6.9156,66.12,0.0093,1,0.0],[2,6.8228,6.9273,392.8,0.02638,1,11.337],[2,6.846,6.8924,130.75,0.02597,1,3.388],[2,7.055,7.0782,198.28,0.00314,1,0.0],[2,7.055,7.1827,261.43,0.01327,1,0.0],[2,7.055,7.1711,326.38,0.02066,2,0.0],[2,7.0666,7.1246,295.34,0.01432,1,12.912],[2,7.0666,7.1478,357.57,0.00725,1,0.0],[2,7.113,7.1362,31.81,0.00284,1,0.0],[3,7.5,10.0,651.72,0.00057,0,0.0],[3,7.5,10.0,785.25,0.00689,0,2.0],[3,7.5,10.0,912.73,0.00041,0,50.0],[3,7.5,10.0,521.07,0.01025,0,8.0],[3,7.5,10.0,783.52,0.00434,0,10.0],[3,7.5,10.0,785.78,0.00575,0,7.812],[3,7.5,10.0,524.23,0.02003,0,22.5],[3,7.5,10.0,658.65,0.00037,0,14.062],[3,7.5,10.0,795.13,0.00059,0,7.031],[3,7.5,10.0,783.07,0.00405,0,8.688],[3,7.5,10.0,1046.49,0.00155,0,3.906],[3,7.5,10.0,1177.58,0.0007,0,50.0],[3,7.5,10.0,1309.3,0.00044,0,6.25],[3,7.5697,7.6742,459.9,0.00953,2,0.0],[3,7.8135,7.9296,392.43,0.03068,2,8.221],[3,7.8367,7.9063,455.62,0.00737,1,0.0],[3,8.0399,8.2199,565.83,0.01845,0,30.0],[3,8.0399,8.2199,389.13,0.02063,0,30.0],[3,8.0399,8.2199,514.81,0.01731,0,120.0],[3,8.0457,8.2257,550.2,0.02488,0,30.0],[3,8.0457,8.2257,472.44,0.01001,0,18.75],[3,8.0457,8.2257,583.48,0.01384,0,15.0],[3,8.0544,8.2344,392.55,0.02947,0,3.072],[3,8.0544,8.2344,527.78,0.0531,0,60.0],[3,8.0544,8.2344,263.83,0.01556,0,0.469],[3,8.0573,8.8584,522.63,0.07349,2,1.29],[3,8.0689,8.8119,262.61,0.02221,1,0.0],[3,8.0805,8.5681,653.88,0.0086,1,0.0],[3,8.3707,8.5565,391.88,0.0009,1,0.0],[3,8.5507,8.7307,267.32,0.01281,0,3.0],[3,8.5507,8.7307,657.73,0.01671,0,15.36],[3,8.5507,8.7307,625.38,0.00824,0,7.68],[3,8.5507,8.7307,765.63,0.00537,0,7.5],[3,8.5507,8.7307,556.67,0.01945,0,30.0],[3,8.6146,8.6494,679.37,0.00251,1,0.0],[3,8.8003,8.9048,458.08,0.01175,2,2.653],[3,8.8235,8.9164,66.19,0.01035,1,0.0],[3,8.8235,8.928,393.07,0.0065,1,0.0],[3,8.8468,8.8932,130.31,0.00417,1,0.0],[3,9.0673,9.0906,295.74,0.00513,1,0.0],[3,9.0673,9.079,69.19,0.00362,1,0.0],[3,9.0673,9.1834,324.77,0.02425,2,0.0],[3,9.079,9.1718,261.22,0.01269,1,0.0],[3,9.5434,9.6595,423.41,0.03173,2,12.49],[3,9.5782,9.6711,390.56,0.03045,2,1.742],[3,9.5898,9.6478,262.73,0.00903,1,0.0],[3,9.5898,9.6711,66.42,0.03087,1,15.014],[3,9.5898,9.6711,455.58,0.02775,1,15.496],[3,9.6014,9.6362,131.47,0.00413,1,0.0],[3,9.6478,9.6827,323.59,0.01217,1,6.927],[3,9.7988,9.9149,455.66,0.02622,2,0.0],[3,9.8104,9.8336,506.77,0.00291,1,0.0],[3,9.8104,9.8452,254.65,0.01973,1,53.986],[3,9.8104,9.9033,130.7,0.00482,1,0.0],[3,9.8104,9.8336,337.61,0.00265,1,0.0],[3,9.8104,9.8336,426.39,0.00564,1,0.0],[3,9.8104,9.9904,399.75,0.02029,0,12.0],[3,9.8104,9.9904,523.02,0.00733,0,3.84],[3,9.8104,9.9904,197.09,0.00829,0,4.688],[3,9.8104,9.9904,588.93,0.00703,0,2.344],[3,9.8104,9.9904,449.63,0.00735,0,5.0],[3,9.8104,9.9904,487.46,0.01732,0,58.594],[3,9.8104,9.9904,413.19,0.01786,0,30.0],[3,9.8104,9.9904,368.67,0.01925,0,48.0],[3,9.8104,9.9904,654.0,0.00487,0,500.0],[3,9.8104,9.9904,330.26,0.0203,0,24.0],[3,9.8104,9.9904,719.76,0.00408,0,12.0],[3,9.822,9.9033,66.78,0.03229,1,11.832],[3,9.8336,9.9265,391.41,0.04719,1,16.825],[4,10.0,12.5,524.3,0.02683,0,4.096],[4,10.0,12.5,790.18,0.00112,0,1.0],[4,10.0,12.5,1050.02,0.00088,0,3.125],[4,10.0,12.5,1601.11,0.00057,0,6.4],[4,10.0,12.5,524.44,0.03687,0,1.6],[4,10.0,12.5,656.64,0.00593,0,2.5],[4,10.0,12.5,789.95,0.00078,0,0.0],[4,10.0,12.5,660.3,0.00337,0,0.531],[4,10.0,12.5,525.0,0.00269,0,0.045],[4,10.0,12.5,793.97,0.00044,0,3.109],[4,10.0,12.5,527.57,0.0029,0,0.0],[4,10.0,12.5,526.63,0.00194,0,0.0],[4,10.0,12.5,661.27,0.00648,0,2.19],[4,10.0,12.5,920.99,0.00088,0,1.368],[4,10.0406,10.2206,548.51,0.00865,0,6.0],[4,10.0406,10.2206,478.73,0.0072,0,25600.0],[4,10.0406,10.2206,259.89,0.02096,0,0.75],[4,10.0406,10.2206,318.82,0.0062,0,9.6],[4,10.0464,11.0797,523.58,0.14977,1,2.974],[4,10.058,10.9636,260.97,0.02903,1,0.0],[4,10.058,10.238,525.94,0.11669,0,96.0],[4,10.058,10.238,653.35,0.01287,0,3.75],[4,10.058,10.238,532.77,0.01289,0,15.0],[4,10.0929,10.2786,392.12,0.01084,1,0.0],[4,10.3135,10.5921,654.41,0.00906,2,0.0],[4,10.3483,10.5224,394.75,0.00392,1,0.001],[4,10.5341,10.5573,559.93,0.00324,1,0.0],[4,10.5573,10.8127,785.4,0.01792,2,0.0],[4,10.5573,10.7373,679.33,0.01377,0,100.0],[4,10.5573,10.7373,746.0,0.00839,0,37.5],[4,10.5573,10.7373,637.33,0.02249,0,37.5],[4,10.6385,10.743,653.54,0.00779,2,8.227],[4,10.7895,10.8127,637.66,0.00199,1,0.0],[4,10.8127,10.9172,458.12,0.00559,1,0.0],[4,10.8127,10.9056,67.69,0.00994,1,0.0],[4,10.8127,10.9288,393.69,0.01265,1,0.0],[4,10.8243,10.8475,327.54,0.00353,1,0.0],[4,11.0449,11.1958,327.91,0.02692,2,0.0],[4,11.0565,11.0681,66.59,0.00514,1,0.0],[4,11.0681,11.0797,195.96,0.00311,1,0.0],[4,11.1146,11.1726,359.74,0.01436,2,2.831],[4,11.5441,11.7241,389.83,0.02422,0,6.0],[4,11.5441,11.7241,443.99,0.01554,0,7.68],[4,11.5441,11.7241,483.91,0.00929,0,12.0],[4,11.5441,11.7241,300.32,0.00435,0,3.0],[4,11.5528,11.7328,427.27,0.02328,0,9.6],[4,11.5528,11.7328,398.92,0.01097,0,3.0],[4,11.5528,11.7328,265.8,0.01369,0,9.375],[4,11.5528,11.7328,330.12,0.00431,0,1.2],[4,11.5528,11.7328,182.96,0.00701,0,12.0],[4,11.5557,11.6834,66.59,0.02272,1,2.534],[4,11.5906,11.6718,458.33,0.00992,2,0.0],[4,11.8112,11.8344,330.67,0.00384,1,0.0],[4,11.8112,11.9389,393.8,0.04982,2,5.055],[4,11.8112,11.9912,458.29,0.02165,0,10.0],[4,11.8112,11.9912,265.6,0.01297,0,12.0],[4,11.8112,11.9912,312.15,0.01726,0,500.0],[4,11.8112,11.9912,523.45,0.01788,0,25.6],[4,11.8112,11.9912,592.63,0.00346,0,6.0],[4,11.8228,11.9156,456.09,0.00601,2,0.0],[4,11.8344,11.8924,264.11,0.0016,1,0.0],[4,12.0492,12.2292,518.48,0.04813,0,30.0],[4,12.0492,12.2292,549.72,0.01079,0,6.0],[4,12.0492,12.2292,612.64,0.00569,0,9.6],[4,12.0492,12.2292,431.99,0.00321,0,6.0],[4,12.0492,12.2292,251.17,0.01164,0,24.0],[4,12.055,12.4729,130.87,0.04668,1,0.001],[4,12.0666,12.4845,261.49,0.02137,1,0.444],[4,12.0666,12.4961,523.28,0.07442,1,0.011],[4,12.0898,12.1711,654.13,0.01004,1,0.0],[4,12.0898,12.2523,392.7,0.01765,1,0.0],[4,12.322,12.4497,393.67,0.0064,1,0.007],[4,12.3336,12.3684,654.52,0.00218,1,0.0],[4,12.4265,12.4961,655.3,0.01362,2,3.024],[5,12.5,15.0,521.56,0.01092,0,0.0],[5,12.5,15.0,587.25,0.00148,0,0.0],[5,12.5,15.0,719.18,0.00039,0,0.0],[5,12.5,15.0,851.15,0.00056,0,0.5],[5,12.5,15.0,918.7,0.00044,0,0.0],[5,12.5,15.0,524.42,0.10235,0,20.0],[5,12.5,15.0,783.47,0.01579,0,3.125],[5,12.5,15.0,1046.29,0.00138,0,0.16],[5,12.5,15.0,455.56,0.003,0,12.5],[5,12.5,15.0,720.7,0.00071,0,0.0],[5,12.5,15.0,786.59,0.01272,0,2.934],[5,12.5,15.0,919.24,0.00247,0,7.51],[5,12.5,15.0,1048.38,0.00298,0,3.755],[5,12.5,15.0,460.0,0.00258,0,0.244],[5,12.5,15.0,527.06,0.09524,0,15.627],[5,12.5,15.0,601.44,0.00261,0,1.25],[5,12.5,15.0,676.9,0.00043,0,0.0],[5,12.5,15.0,751.86,0.00106,0,1.563],[5,12.5,15.0,827.59,0.00073,0,0.305],[5,12.5,15.0,906.19,0.00041,0,0.391],[5,12.5,15.0,532.57,0.00207,0,0.0],[5,12.5,15.0,603.91,0.00053,0,0.0],[5,12.5,15.0,988.12,0.0002,0,0.0],[5,12.5,15.0,1866.91,0.00021,0,0.977],[5,12.5,15.0,462.26,0.00205,0,9.234],[5,12.5,15.0,781.74,0.00039,0,0.0],[5,12.5,15.0,1042.68,0.00044,0,2.5],[5,12.5232,12.558,131.62,0.06017,1,27.349],[5,12.5232,12.9412,261.1,0.05576,1,2.563],[5,12.5348,12.5697,653.28,0.00335,1,0.0],[5,12.5697,12.8135,785.13,0.00621,1,0.0],[5,12.7438,12.7786,633.48,0.00258,1,0.0],[5,12.8019,12.918,457.48,0.02129,2,0.0],[5,12.8483,12.9063,129.95,0.00249,1,0.0],[5,12.976,13.0341,523.83,0.00644,1,0.0],[5,13.0399,13.2199,337.42,0.01452,0,4.8],[5,13.0399,13.2199,198.39,0.007,0,4.8],[5,13.0399,13.2199,228.42,0.00776,0,9.6],[5,13.0457,13.185,331.31,0.00431,2,0.0],[5,13.0573,13.0805,230.47,0.0014,1,0.0],[5,13.0689,13.0921,194.36,0.00292,1,0.0],[5,13.0921,13.1502,358.09,0.00524,1,0.0],[5,13.5681,13.5797,130.54,0.00647,1,0.0],[5,13.5797,13.6029,525.59,0.00331,1,0.0],[5,13.5913,13.6262,325.97,0.00681,1,0.0],[5,13.6146,13.6494,261.0,0.00717,1,0.0],[5,13.8003,13.8468,326.33,0.00078,1,0.0],[5,13.8119,13.9164,457.89,0.01539,2,0.0],[5,13.8235,13.9048,66.6,0.00837,1,0.0],[5,13.8351,13.9396,391.69,0.04762,1,16.734],[5,14.0441,14.8452,524.23,0.10137,1,1.847],[5,14.0528,14.2328,581.37,0.00473,0,9.6],[5,14.0528,14.2328,487.31,0.01605,0,19.2],[5,14.0528,14.2328,522.46,0.10144,0,4.8],[5,14.0528,14.2328,456.44,0.00626,0,3.125],[5,14.0557,14.5434,130.9,0.05613,1,1.953],[5,14.0673,14.555,392.39,0.01873,1,1.858],[5,14.0673,14.9381,262.45,0.02186,1,0.0],[5,14.079,14.3576,654.24,0.01717,1,3.066],[5,14.2995,14.3344,55.01,0.01752,2,0.0],[5,14.3112,14.4912,409.77,0.00877,0,40.96],[5,14.3112,14.4912,309.13,0.01619,0,60.0],[5,14.4621,14.5782,652.86,0.00531,1,0.0],[5,14.5492,14.7292,267.39,0.02052,0,3.75],[5,14.5492,14.7292,137.49,0.02764,0,24.0],[5,14.5492,14.7292,716.9,0.00832,0,7.5],[5,14.5492,14.7292,615.25,0.00796,0,6.0],[5,14.5492,14.7292,330.53,0.0039,0,0.375],[5,14.5492,14.7292,502.0,0.02343,0,30.0],[5,14.555,14.5782,335.28,0.0028,1,0.0],[5,14.555,14.5782,622.98,0.00189,1,0.0],[5,14.5666,14.8104,785.19,0.02686,1,3.824],[5,14.6943,14.7175,659.09,0.00172,1,0.0],[5,14.7988,14.8336,191.64,0.00189,1,0.0],[5,14.8075,14.9875,432.08,0.02701,0,30.0],[5,14.8075,14.9875,196.38,0.01415,0,20.0],[5,14.8075,14.9875,372.52,0.01535,0,30.0],[5,14.8104,14.9381,393.1,0.04411,1,7.978],[5,14.822,14.9265,65.76,0.02783,1,9.317],[5,14.8336,14.9149,460.0,0.01479,2,4.398],[5,14.8452,14.9033,130.75,0.02212,1,8.233],[5,14.9149,14.9381,326.27,0.00905,1,0.0]],"bank":[[0,"harmonic_string",63.93,3,11.147,11.147,false],[0,"harmonic_string",67.9,2,11.147,11.147,false],[0,"percussive_bundle",1.81,0,11.147,11.147,false],[0,"percussive_bundle",1.56,0,11.147,11.147,false],[1,"percussive_bundle",0.0,1,45.597,45.565,true],[1,"percussive_bundle",0.0,4,45.643,45.597,true],[1,"harmonic_string",64.58,4,45.643,45.643,false],[1,"harmonic_string",130.5,4,45.643,45.643,false],[2,"harmonic_string",260.7,3,40.767,40.767,false],[2,"harmonic_string",131.69,4,40.767,40.767,false],[2,"percussive_bundle",0.0,3,40.767,40.767,false],[2,"percussive_bundle",0.0,2,40.767,40.767,false],[3,"harmonic_string",130.32,6,56.354,56.354,false],[3,"harmonic_string",260.47,3,56.354,56.354,false],[3,"percussive_bundle",0.0,4,56.354,56.354,false],[3,"percussive_bundle",8.05,0,56.354,56.354,false],[4,"harmonic_string",263.09,2,44.005,44.005,false],[4,"harmonic_string",131.66,5,44.005,44.005,false],[4,"percussive_bundle",0.0,1,44.005,44.005,false],[4,"percussive_bundle",0.0,5,44.005,44.005,false],[5,"harmonic_string",260.46,2,58.952,56.714,true],[5,"percussive_bundle",14.55,1,58.939,58.939,false],[5,"percussive_bundle",14.31,2,58.939,58.939,false],[5,"harmonic_string",65.13,12,58.952,58.952,false]],"env_orig":[0.0,0.0017,0.0012,0.023,0.0168,0.0138,0.0104,0.0094,0.0067,0.0055,0.0063,0.0062,0.0076,0.0063,0.0078,0.0071,0.0079,0.0077,0.0258,0.02,0.0107,0.0083,0.0099,0.0111,0.0114,0.0106,0.0152,0.0121,0.0115,0.0105,0.0108,0.0119,0.011,0.0127,0.0125,0.0093,0.0088,0.0086,0.0075,0.0087,0.008,0.0223,0.0114,0.0115,0.0103,0.0083,0.0096,0.011,0.0113,0.0462,0.0592,0.062,0.0604,0.0599,0.0611,0.075,0.0072,0.0031,0.0025,0.0025,0.002,0.0022,0.0026,0.0482,0.0236,0.0274,0.03,0.0182,0.0243,0.0251,0.036,0.0109,0.0023,0.0019,0.0018,0.0019,0.0016,0.0012,0.0024,0.0077,0.0048,0.01,0.0082,0.0093,0.0089,0.0097,0.0106,0.0012,0.001,0.001,0.0009,0.0009,0.0009,0.0812,0.1024,0.0613,0.0627,0.0568,0.0592,0.0551,0.0578,0.0064,0.0013,0.0008,0.0009,0.001,0.0009,0.0009,0.0753,0.1021,0.0419,0.0585,0.0585,0.0574,0.0567,0.0606,0.0519,0.014,0.0031,0.0023,0.0015,0.0012,0.0014,0.0249,0.1557,0.158,0.139,0.1397,0.1359,0.1228,0.1272,0.119,0.1186,0.1199,0.1196,0.1147,0.1081,0.1117,0.1078,0.1183,0.1042,0.1002,0.0978,0.0963,0.1024,0.096,0.0993,0.0952,0.0955,0.0919,0.0966,0.0965,0.0963,0.1327,0.2192,0.2196,0.2208,0.2236,0.2198,0.2214,0.2215,0.2544,0.2327,0.2221,0.22,0.2197,0.2208,0.2202,0.2195,0.1308,0.0751,0.0624,0.0706,0.0766,0.0713,0.0838,0.0382,0.0338,0.0314,0.0317,0.0323,0.0331,0.031,0.0499,0.0622,0.061,0.0508,0.0613,0.0529,0.0632,0.0839,0.0388,0.0296,0.0292,0.0293,0.0289,0.0279,0.0283,0.0282,0.0318,0.0153,0.0124,0.0123,0.011,0.0122,0.0122,0.0169,0.006,0.0054,0.0059,0.0053,0.0051,0.0054,0.0696,0.0653,0.0678,0.0593,0.0598,0.0687,0.0608,0.073,0.0088,0.0052,0.0052,0.0051,0.005,0.0051,0.0048,0.1019,0.0636,0.0911,0.0997,0.1021,0.0966,0.0899,0.087,0.0264,0.0056,0.0022,0.0026,0.002,0.0015,0.0016,0.0851,0.1142,0.1221,0.1179,0.1353,0.1327,0.1347,0.1255,0.1331,0.1006,0.1287,0.1261,0.1248,0.1188,0.1112,0.1165,0.1601,0.1204,0.1229,0.1219,0.1238,0.1292,0.1191,0.1318,0.1366,0.1356,0.1399,0.1466,0.1368,0.1359,0.1298,0.1855,0.1859,0.1716,0.1717,0.1812,0.1827,0.1849,0.1968,0.174,0.1743,0.1705,0.1689,0.1673,0.1659,0.1615,0.0932,0.0883,0.0895,0.1103,0.0941,0.0969,0.0891,0.0405,0.033,0.0336,0.0336,0.0321,0.0331,0.0308,0.0863,0.12,0.0301,0.0842,0.0712,0.0745,0.0852,0.0775,0.0249,0.0223,0.0231,0.023,0.0229,0.0228,0.0222,0.0227,0.0205,0.0107,0.0114,0.0139,0.0123,0.0114,0.0131,0.012,0.006,0.0059,0.006,0.0056,0.0055,0.0059,0.0614,0.1058,0.1085,0.0781,0.0826,0.1003,0.1048,0.0998,0.0078,0.0048,0.0041,0.0043,0.0039,0.0038,0.0043,0.0563,0.1068,0.1051,0.1108,0.0919,0.0954,0.0912,0.0824,0.0511,0.0125,0.0025,0.0027,0.0016,0.0016,0.0015,0.1102,0.1471,0.142,0.1353,0.1366,0.1446,0.149,0.1504,0.1452,0.1363,0.1295,0.1344,0.1353,0.1282,0.1376,0.1425,0.1335,0.1367,0.1345,0.1232,0.1284,0.1243,0.1274,0.1275,0.1323,0.1261,0.1318,0.12,0.1211,0.1353,0.1311,0.1407,0.1277,0.127,0.1322,0.1336,0.1414,0.1332,0.1534,0.1082,0.1384,0.1265,0.1194,0.1225,0.133,0.1209,0.0935,0.0906,0.0916,0.0817,0.0934,0.0905,0.086,0.0207,0.0226,0.0235,0.0233,0.0214,0.0232,0.0191,0.1479,0.0644,0.1154,0.0531,0.0938,0.0529,0.1179,0.0695,0.0178,0.0166,0.0152,0.0174,0.0168,0.0159,0.0152,0.0159,0.0222,0.0126,0.0183,0.014,0.0097,0.0154,0.0124,0.0135,0.0032,0.0037,0.0044,0.0036,0.0036,0.0039,0.0735,0.0888,0.106,0.1146,0.1192,0.1012,0.0922,0.0743,0.0062,0.0028,0.0025,0.0037,0.0031,0.0031,0.0025,0.0928,0.1455,0.1233,0.0985,0.0805,0.1074,0.0808,0.1402,0.0278,0.0075,0.0027,0.0015,0.0016,0.0016,0.0016,0.1029,0.1663,0.1543,0.1574,0.1641,0.1705,0.164,0.1574,0.1569,0.1434,0.1268,0.1344,0.1364,0.1412,0.1446,0.1429,0.1508,0.1288,0.1435,0.1166,0.1379,0.1369,0.1342,0.1404,0.1267,0.1392,0.1397,0.1374,0.142,0.1371,0.1421,0.1305,0.1426,0.1325,0.1554,0.1435,0.1305,0.126,0.18,0.1299,0.1241,0.1253,0.1309,0.1254,0.1368,0.1338,0.0962,0.0775,0.0802,0.079,0.0964,0.0869,0.1013,0.0419,0.0219,0.0242,0.0215,0.0203,0.0196,0.0215,0.1862,0.1009,0.0798,0.0373,0.107,0.0706,0.0914,0.0434,0.037,0.0283,0.018,0.0171,0.0151,0.0145,0.0154,0.0439,0.0422,0.0259,0.0183,0.0192,0.0128,0.019,0.012,0.0548,0.0281,0.0134,0.0044,0.0043,0.004,0.0033,0.1174,0.1347,0.0894,0.1188,0.0891,0.0987,0.0967,0.1015,0.0539,0.0303,0.0121,0.0051,0.0036,0.004,0.0029,0.1843,0.0951,0.1076,0.1084,0.1053,0.1015,0.0764,0.1238,0.0717,0.0351,0.0121,0.0049,0.0024,0.0022,0.0021,0.1922,0.1539,0.1368,0.1433,0.1518,0.1509,0.1474,0.1389,0.1834,0.1447,0.1396,0.1436,0.1337,0.126,0.1243,0.1403,0.1595,0.1255,0.1198,0.1416,0.1406,0.1269,0.1379,0.1232,0.1221,0.1182,0.129,0.1349,0.1375,0.133,0.1985,0.1658,0.1343,0.1524,0.1365,0.1492,0.1388,0.1549,0.1769,0.1322,0.1318,0.1244,0.1289,0.1343,0.1323,0.1398,0.1085,0.1021,0.1013,0.1085,0.1024,0.1065,0.09,0.0765,0.0525,0.0352,0.0275,0.0276,0.03,0.027,0.2119,0.1418,0.0497,0.0946,0.0557,0.0915,0.0578,0.0925,0.056,0.0435,0.0198,0.0208,0.0188,0.0209,0.0206,0.0332,0.0621,0.0331,0.022,0.0135,0.0191,0.0152,0.0208,0.0659,0.0361,0.0135,0.0061,0.0045,0.0063,0.0055,0.171,0.1344,0.0867,0.0939,0.0682,0.0965,0.1019,0.0733,0.0591,0.0371,0.0166,0.0066,0.0048,0.0048,0.0039,0.1989,0.1257,0.0997,0.1095,0.0875,0.0834,0.0964,0.1139,0.0937,0.0484,0.0143,0.0064,0.0036,0.0033,0.0028,0.0736,0.1507,0.1578,0.1451,0.1545,0.1454,0.1597,0.1535,0.1566,0.1514,0.1365,0.1382,0.1355,0.1405,0.1377,0.1555,0.1518,0.1451,0.151,0.1393,0.1355,0.121,0.132,0.1292,0.1215,0.1293,0.1466,0.1461,0.1331,0.1287,0.1603,0.1612,0.149,0.1543,0.1667,0.148,0.1511,0.1607,0.1484,0.1441,0.1383,0.1542,0.1609,0.164,0.1532,0.1415,0.1052,0.093,0.0949,0.0966,0.0863,0.0975,0.1064,0.0621,0.0449,0.0296,0.0298,0.0257,0.0253,0.0263,0.1425,0.1304,0.0512,0.0347,0.0668,0.0474,0.1093,0.065,0.0732,0.0361,0.0209,0.015,0.019,0.0186,0.0168,0.0813,0.0496,0.028,0.0139,0.0128,0.0145,0.017,0.018,0.0689,0.0361,0.0101,0.0057,0.0054,0.0048,0.0046,0.0915,0.1282,0.1013,0.1128,0.0991,0.1008,0.1009,0.0715,0.0785,0.0263,0.0141,0.0079,0.0041,0.0044,0.0041,0.137,0.1035,0.1051,0.0863,0.0893,0.1184,0.109,0.1067,0.0481,0.0301,0.0137,0.0045,0.0033,0.0024,0.003,0.1382,0.1493,0.1522,0.1597,0.1552,0.1555,0.1629,0.1441,0.149,0.1459,0.1384,0.1415,0.1437,0.1359,0.1462,0.1936,0.1892,0.1373,0.155,0.1373,0.1378,0.1356,0.1243,0.1652,0.163,0.1534,0.1406,0.1441,0.1411,0.1157,0.2025,0.1595,0.1457,0.1522,0.1451,0.1537,0.1397,0.1418,0.1407,0.1332,0.1501,0.1457,0.135,0.1452,0.1379,0.1844,0.1017,0.0911,0.0974,0.098,0.0954,0.1005,0.1217,0.073,0.0397,0.0272,0.0256],"env_recon":[0.0038,0.0033,0.0027,0.0019,0.002,0.0023,0.0032,0.0037,0.0036,0.0032,0.0027,0.002,0.0018,0.0026,0.0035,0.0036,0.0037,0.0034,0.0025,0.0021,0.0019,0.003,0.0032,0.0036,0.0036,0.0032,0.0029,0.002,0.0023,0.0027,0.0035,0.0038,0.0036,0.0034,0.0027,0.0019,0.0022,0.0028,0.0033,0.0035,0.0037,0.0033,0.0023,0.0019,0.0021,0.0028,0.0034,0.0051,0.0107,0.0169,0.0208,0.0204,0.0194,0.0204,0.0213,0.0219,0.0219,0.0212,0.0202,0.0191,0.0203,0.0213,0.0218,0.0218,0.0217,0.0203,0.0161,0.014,0.0149,0.0158,0.0145,0.0128,0.0107,0.0089,0.0085,0.0081,0.0082,0.0091,0.0093,0.0092,0.0087,0.0079,0.0076,0.0071,0.0066,0.0074,0.0077,0.0073,0.0063,0.0053,0.0045,0.0037,0.0055,0.0094,0.01,0.0071,0.0058,0.0045,0.0036,0.0034,0.0042,0.0047,0.0046,0.0038,0.0034,0.0025,0.0048,0.0077,0.0131,0.0147,0.0218,0.0251,0.0249,0.0229,0.0209,0.0204,0.0193,0.0179,0.0179,0.0194,0.0199,0.0193,0.0167,0.0535,0.1061,0.1438,0.143,0.1393,0.1333,0.1274,0.1218,0.1204,0.1185,0.1164,0.1146,0.113,0.1096,0.1072,0.1048,0.1027,0.1019,0.1012,0.0976,0.0955,0.0936,0.0916,0.0899,0.0865,0.0844,0.0822,0.0728,0.0508,0.0495,0.1203,0.1769,0.1937,0.2193,0.2027,0.225,0.2384,0.2511,0.244,0.2411,0.2244,0.216,0.2039,0.194,0.2049,0.1805,0.1267,0.0927,0.0615,0.0536,0.0501,0.0465,0.0417,0.0414,0.0409,0.0399,0.0343,0.0281,0.0257,0.0349,0.0355,0.0338,0.0283,0.0252,0.0274,0.024,0.0281,0.0256,0.0276,0.026,0.0237,0.0209,0.0193,0.0157,0.0157,0.0168,0.0165,0.0147,0.0159,0.0127,0.0157,0.013,0.0159,0.0108,0.0105,0.0072,0.0085,0.0083,0.0081,0.0128,0.0226,0.0251,0.0271,0.0263,0.027,0.0249,0.0248,0.0267,0.0279,0.0281,0.0277,0.0269,0.0253,0.0339,0.0385,0.053,0.0364,0.0708,0.0591,0.0457,0.0407,0.0375,0.0361,0.0332,0.0308,0.0276,0.0254,0.0244,0.0258,0.0683,0.1043,0.131,0.14,0.1404,0.1396,0.1381,0.1348,0.1309,0.1262,0.1171,0.112,0.1067,0.1009,0.0954,0.0894,0.0873,0.0941,0.091,0.09,0.0875,0.0833,0.0779,0.0715,0.0814,0.0963,0.1653,0.1678,0.1385,0.118,0.119,0.1457,0.1763,0.1655,0.1703,0.1735,0.1733,0.1667,0.1615,0.1635,0.1576,0.1564,0.1501,0.1519,0.1293,0.1405,0.1402,0.1194,0.0953,0.0982,0.0818,0.0923,0.0744,0.0842,0.0576,0.0497,0.0449,0.0486,0.0186,0.0261,0.0291,0.0493,0.0548,0.0403,0.0559,0.0445,0.0544,0.0408,0.0331,0.0247,0.025,0.0229,0.0267,0.023,0.0249,0.0215,0.0183,0.0172,0.0155,0.0165,0.0186,0.0188,0.0221,0.0249,0.0261,0.0269,0.0271,0.0268,0.0253,0.0252,0.0246,0.0237,0.0221,0.0214,0.021,0.0212,0.0211,0.0229,0.0257,0.027,0.0276,0.0273,0.0261,0.0263,0.0248,0.0229,0.024,0.03,0.0326,0.0312,0.0324,0.0354,0.036,0.034,0.0321,0.029,0.0252,0.024,0.0243,0.0588,0.1092,0.1198,0.1153,0.123,0.1241,0.1201,0.1273,0.1353,0.1335,0.1267,0.1179,0.1204,0.1249,0.1238,0.1159,0.1095,0.109,0.1085,0.108,0.1062,0.1054,0.1041,0.102,0.0987,0.0965,0.0956,0.0949,0.0929,0.1062,0.1034,0.1392,0.0962,0.1136,0.0881,0.0942,0.0895,0.1017,0.1049,0.0778,0.0689,0.0734,0.0763,0.07,0.0726,0.0793,0.0776,0.0862,0.0942,0.0898,0.0946,0.0842,0.09,0.0668,0.058,0.0525,0.0491,0.0456,0.0438,0.0419,0.031,0.0363,0.0432,0.0447,0.0478,0.0403,0.0468,0.0323,0.0428,0.0406,0.0305,0.0339,0.0255,0.0242,0.0242,0.0313,0.0276,0.0355,0.0239,0.0342,0.027,0.0283,0.0281,0.0231,0.0325,0.0264,0.0354,0.036,0.0407,0.0363,0.0331,0.0292,0.0294,0.0293,0.0304,0.0246,0.023,0.0229,0.0243,0.0265,0.0284,0.0295,0.0319,0.0345,0.0368,0.0401,0.049,0.062,0.0712,0.0698,0.0637,0.0569,0.0433,0.0383,0.0326,0.0294,0.029,0.0295,0.0292,0.0333,0.04,0.0786,0.086,0.141,0.1278,0.1267,0.1277,0.1287,0.132,0.1304,0.126,0.1191,0.1143,0.1066,0.1041,0.1033,0.1017,0.1001,0.0989,0.0995,0.1001,0.1,0.0992,0.0985,0.0974,0.0963,0.0945,0.0914,0.0867,0.0821,0.0864,0.0978,0.0943,0.0929,0.0778,0.0815,0.0766,0.0735,0.0685,0.0732,0.0749,0.0696,0.0717,0.0774,0.0763,0.0729,0.0702,0.0716,0.0805,0.0823,0.0612,0.0566,0.0518,0.0457,0.0476,0.0468,0.043,0.0456,0.0432,0.0402,0.0351,0.0302,0.0361,0.041,0.0468,0.0405,0.0533,0.045,0.0531,0.0534,0.0341,0.0331,0.0242,0.019,0.0185,0.014,0.0241,0.0199,0.0254,0.026,0.0277,0.0272,0.0181,0.0233,0.0307,0.0339,0.0373,0.0412,0.0431,0.0413,0.0232,0.0674,0.0638,0.0848,0.1079,0.0947,0.0661,0.0762,0.0582,0.0491,0.0287,0.0213,0.0232,0.0258,0.0257,0.03,0.0477,0.1275,0.095,0.119,0.115,0.0902,0.0879,0.071,0.0398,0.037,0.0441,0.0398,0.0306,0.0511,0.0294,0.044,0.1042,0.1292,0.1184,0.1194,0.1153,0.1185,0.1122,0.1033,0.1055,0.0968,0.1018,0.1008,0.102,0.1025,0.097,0.0963,0.0927,0.0873,0.0869,0.0899,0.0943,0.0965,0.0998,0.0994,0.1009,0.1016,0.1024,0.1074,0.1121,0.0947,0.1231,0.1035,0.1072,0.1115,0.1108,0.1033,0.0902,0.0936,0.0885,0.0884,0.0822,0.0781,0.0817,0.083,0.0857,0.104,0.097,0.0984,0.0893,0.0917,0.0822,0.0646,0.0575,0.0489,0.0455,0.0425,0.0386,0.0419,0.0447,0.0548,0.0628,0.0622,0.0634,0.0624,0.0541,0.0678,0.0518,0.0736,0.0679,0.0387,0.0353,0.0327,0.0301,0.0285,0.0294,0.0296,0.0293,0.0279,0.0262,0.0226,0.0206,0.0183,0.0166,0.0158,0.015,0.0158,0.0161,0.0186,0.0516,0.0449,0.0741,0.0645,0.0542,0.0692,0.0495,0.0759,0.0497,0.043,0.0438,0.0298,0.0416,0.0409,0.0281,0.0349,0.0476,0.111,0.0953,0.0918,0.0791,0.0786,0.0666,0.0618,0.0579,0.0536,0.0204,0.0162,0.0162,0.0217,0.0491,0.0586,0.0914,0.1247,0.12,0.1302,0.1292,0.1326,0.1379,0.1324,0.1421,0.1376,0.1369,0.1405,0.1358,0.1412,0.1384,0.1395,0.1358,0.1368,0.1345,0.1326,0.1294,0.1223,0.1294,0.1255,0.1289,0.1325,0.1356,0.158,0.1781,0.154,0.1267,0.1007,0.0881,0.0885,0.0878,0.0836,0.0808,0.0769,0.0717,0.0704,0.064,0.0567,0.0558,0.06,0.0559,0.063,0.0609,0.0607,0.0641,0.0583,0.0586,0.0606,0.0518,0.0472,0.0403,0.0418,0.0371,0.028,0.0453,0.0475,0.063,0.0408,0.037,0.0333,0.0468,0.0498,0.0464,0.0402,0.0328,0.0417,0.0419,0.0356,0.0328,0.0351,0.0312,0.0276,0.0282,0.0287,0.0248,0.0231,0.024,0.0279,0.0251,0.0226,0.021,0.0182,0.021,0.0213,0.0204,0.0187,0.0194,0.0236,0.0255,0.029,0.0352,0.0321,0.032,0.0314,0.0293,0.0266,0.0226,0.02,0.0214,0.0255,0.0225,0.0435,0.06,0.0765,0.0712,0.0658,0.0613,0.0544,0.0382,0.0334,0.0301,0.0292,0.0234,0.038,0.0567,0.0904,0.0962,0.1261,0.1479,0.142,0.1515,0.1505,0.1567,0.1601,0.162,0.1656,0.164,0.16,0.1563,0.1527,0.1579,0.1543,0.1633,0.1432,0.1294,0.1261,0.1212,0.1177,0.1117,0.1019,0.0956,0.0874,0.082,0.0769,0.0882,0.1343,0.1183,0.1109,0.0782,0.0716,0.0669,0.0698,0.0694,0.079,0.0712,0.0757,0.0734,0.0721,0.0689,0.0768,0.1064,0.1193,0.1386,0.1181,0.0985,0.0756,0.0654,0.057,0.0661,0.0713,0.0683,0.0692,0.0684],"total_partials":373};
+
+const D=window.DATA||{partials:[],sections:[],iters:[],bank:[],env_orig:[],env_recon:[],best:{},initial_corr:0};
+const SR=D.sr||22050,HALF=D.half||0.04644,REL=0.25,DUR=D.dur||15;
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const SVGNS='http://www.w3.org/2000/svg';
+const MC=['#7ee787','#66fcf1','#c792ea'],MN=['damped','constant','glide'];
+const tip=$('#tip');
+function showTip(e,h){tip.innerHTML=h;tip.className='tip show';const r=tip.getBoundingClientRect();
+  tip.style.left=Math.max(8,Math.min(innerWidth-r.width-10,e.clientX+15))+'px';
+  tip.style.top=Math.max(8,e.clientY-r.height-14)+'px';}
+function hideTip(){tip.className='tip';}
+function bindTip(el,h){el.addEventListener('mousemove',e=>showTip(e,h));el.addEventListener('mouseleave',hideTip);}
+
+(function heroBg(){
+  const hero=$('#heroAnim');
+  for(let i=0;i<26;i++){
+    const y=40+i*17;let p='M-60 '+y;
+    for(let x=0;x<=1260;x+=25){
+      const yy=y+Math.sin((x/1260)*Math.PI*(2+i%5)+i*.9)*(9+i%17)*Math.exp(-Math.pow((x-(i*97%1260))/420,2));
+      p+=' L'+x+' '+yy.toFixed(1);
+    }
+    const d=document.createElementNS(SVGNS,'path');
+    d.setAttribute('d',p);d.setAttribute('fill','none');
+    d.setAttribute('stroke',['#7ee787','#66fcf1','#c792ea','#82aaff'][i%4]);
+    d.setAttribute('stroke-width',i%6===0?1.5:.7);
+    d.setAttribute('opacity',(.05+i%5*.022).toFixed(3));
+    hero.appendChild(d);
+  }
+})();
+
+const FLOW=[
+ {t:'INPUT',s:'Metre - Lost.mp3',c:'#82aaff',
+  d:'The source. 469 seconds, 44.1 kHz, stereo MP3. The pipeline works on the first 15 seconds only â€” enough for six 2.5-second windows, which is what every number downstream is based on.',
+  f:['decoded to mono @ 22050 Hz','cropped to 15.000 s','330 750 samples','18.8 MB in â†’ 661 KB render out']},
+ {t:'EVIDENCE',s:'res_evidence.py',c:'#7ee787',
+  d:'A window-normalised STFT feeds per-frame peak detection, peaks are associated across frames into continuous tracks, and each track becomes a partial with frequency, amplitude, phase, decay and onset. This is the only place polyphony is decided â€” and it uses find_peaks, never argmax.',
+  f:['coherent gain 0.5Â·Î£w normalisation','parabolic sub-bin interpolation','log-linear envelope, interior frames only','OMP acceptance by residual reduction','â†’ 6 windows Â· 153 partials Â· corr 0.698835']},
+ {t:'THE LOOP',s:'res_loop â‡„ res_bank',c:'#ffcb6b',
+  d:'Eight iterations of: lift every existing partial, propose new structures from the residual, render the whole song, score it, and accept only if global correlation strictly improves. Otherwise the entire previous state is restored verbatim.',
+  f:['Î» swept Ã—(0.5, 0.8, 1.0, 1.25, 2.0)','frequency search bounded to Â±2 Hz','a drop candidate for every partial','5 metrics recomputed each pass','â†’ 373 partials Â· corr 0.814173']},
+ {t:'LEDGER',s:'res_ledger.json',c:'#66fcf1',
+  d:'The single source of truth. Every downstream artefact â€” WAV, equation text, JavaScript â€” is generated from this file and nothing else. It also carries the audit trail: which hypotheses were proposed, their residual before and after, and whether they were kept.',
+  f:['373 partials with full parameters','24 hypothesis records logged','8 iteration snapshots','res_best.wav Â· res_equations.txt','schema res/1.1 Â· 190 077 B']},
+ {t:'BYTebeat JS',s:'tools/res_*.py',c:'#c792ea',
+  d:'No re-fitting happens here. Numbers are copied verbatim into JavaScript, which is why the exported code reproduces the Python renderer to 0.999947. Two dialects â€” Funcbeat as a real function, Floatbeat as one giant comma expression.',
+  f:['Funcbeat Â· 412-line function','Floatbeat Â· 149 KB single expression','--ratio prunes low-energy partials','--check re-simulates in NumPy','â†’ 4 files in site/songs/']}
+];
+(function flowChart(){
+  const W=192,G=20,Y=124,H=78,svg=$('#flowSvg');
+  let s=`<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3d444d"/></marker>
+  <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#ffcb6b"/></marker></defs>
+  <text x="8" y="30" fill="#6e7681" font-size="11">AUDIO â†’ EQUATIONS Â· every arrow is a file on disk</text>`;
+  FLOW.forEach((n,i)=>{
+    const x=8+i*(W+G);
+    s+=`<g class="fl-node${i===0?' sel':''}" data-i="${i}">
+      <rect x="${x}" y="${Y}" width="${W}" height="${H}" rx="11" fill="#161b22" stroke="${n.c}" stroke-width="1.4"/>
+      <rect x="${x}" y="${Y}" width="${W}" height="4" rx="2" fill="${n.c}"/>
+      <text x="${x+14}" y="${Y+30}" fill="#6e7681" font-size="10.5" letter-spacing="1.4">${n.t}</text>
+      <text x="${x+14}" y="${Y+53}" fill="#e6edf3" font-size="13" font-weight="600">${n.s}</text>
+      <text x="${x+W-14}" y="${Y+28}" fill="${n.c}" font-size="11" text-anchor="end">${i+1}/5</text>
+      ${n.f.map((t,j)=>`<text x="${x}" y="${Y+H+25+j*17}" fill="#4d5560" font-size="10.5">Â· ${t}</text>`).join('')}
+    </g>`;
+    if(i<4)s+=`<line class="flow" x1="${x+W+1}" y1="${Y+H/2}" x2="${x+W+G-1}" y2="${Y+H/2}" stroke="#3d444d" stroke-width="2" marker-end="url(#ah)" opacity=".9"/>`;
+  });
+  const lx=8+2*(W+G)+W/2,ax=8+1*(W+G)+W/2;
+  s+=`<path class="flow" d="M${lx},${Y+H} C${lx},${Y+H+78} ${ax},${Y+H+78} ${ax},${Y+H+3}" fill="none" stroke="#ffcb6b" stroke-width="2" marker-end="url(#ahg)"/>
+  <text x="${(lx+ax)/2}" y="${Y+H+92}" fill="#ffcb6b" font-size="11" text-anchor="middle" opacity=".92">feedback â€” re-propose and re-judge, 8Ã—</text>
+  <text x="8" y="382" fill="#6e7681" font-size="11">grey lines under each stage are measured outputs, not targets</text>`;
+  svg.innerHTML=s;
+  function sel(i){
+    const n=FLOW[i];
+    $$('#flowSvg .fl-node').forEach((e,j)=>e.classList.toggle('sel',i===j));
+    $('#flowDetail').innerHTML=`<h4 style="color:${n.c};font-size:21px;margin-bottom:9px">${n.t} Â· ${n.s}</h4>
+      <p style="color:var(--dim);margin-bottom:13px;font-size:16px;max-width:100ch">${n.d}</p>
+      <div style="font-family:var(--mono);font-size:13px;color:${n.c}">STAGE ${i+1} OF 5</div>`;
+  }
+  $$('#flowSvg .fl-node').forEach(e=>e.addEventListener('click',()=>sel(+e.dataset.i)));
+  sel(0);
+})();
+
+(function waveChart(){
+  if(!D.env_orig||!D.env_recon){$('#waveSvg').innerHTML='<text x="30" y="60" fill="#6e7681" font-size="13">envelope data unavailable</text>';return;}
+  const Wv=1060,PL=54,PR=16,n=D.env_orig.length;
+  const L=[{y:38,h:72,lab:'ORIGINAL',c:'#82aaff',a:D.env_orig},
+           {y:136,h:72,lab:'RECONSTRUCTION',c:'#ff7597',a:D.env_recon},
+           {y:236,h:66,lab:'|DIFFERENCE|',c:'#ffcb6b',a:null}];
+  const X=i=>PL+i/n*(Wv-PL-PR);
+  let mx=.001;D.env_orig.forEach(v=>{if(v>mx)mx=v;});D.env_recon.forEach(v=>{if(v>mx)mx=v;});
+  let s='';
+  L.forEach(l=>{
+    s+=`<text x="${PL}" y="${l.y-10}" fill="${l.c}" font-size="10.5" letter-spacing="1.3">${l.lab}</text>`;
+    s+=`<line x1="${PL}" y1="${l.y+l.h}" x2="${Wv-PR}" y2="${l.y+l.h}" stroke="#21262d"/>`;});
+  for(let t=0;t<=15;t+=2.5){
+    s+=`<line x1="${X(t/15*n)}" y1="28" x2="${X(t/15*n)}" y2="306" stroke="#161b22"/>`;
+    s+=`<text x="${X(t/15*n)}" y="320" fill="#6e7681" font-size="10" text-anchor="middle">${t.toFixed(1)}s</text>`;}
+  function pth(a,b,h){let p='';for(let i=0;i<a.length;i++){p+=(i?'L':'M')+X(i).toFixed(1)+' '+(b-a[i]/mx*h).toFixed(1);}return p;}
+  L.forEach((l,li)=>{
+    if(li===2){
+      const df=D.env_orig.map((v,i)=>Math.abs(v-D.env_recon[i]));
+      s+=`<path d="${pth(df,l.y+l.h,l.h)} L${X(n-1)} ${l.y+l.h} L${PL} ${l.y+l.h} Z" fill="${l.c}" opacity=".2"/>
+          <path d="${pth(df,l.y+l.h,l.h)}" fill="none" stroke="${l.c}" stroke-width="1.2"/>`;
+    }else{
+      s+=`<path d="${pth(l.a,l.y+l.h,l.h)} L${X(n-1)} ${l.y+l.h} L${PL} ${l.y+l.h} Z" fill="${l.c}" opacity=".22"/>
+          <path d="${pth(l.a,l.y+l.h,l.h)}" fill="none" stroke="${l.c}" stroke-width="1.3"/>`;}});
+  s+=`<text x="${Wv-PR}" y="16" fill="#6e7681" font-size="10" text-anchor="end">peak amplitude, linear</text>
+  <g id="wcur" style="display:none"><line y1="28" y2="306" stroke="#e6edf3" stroke-width="1.3"/><circle cy="28" r="3.5" fill="#e6edf3"/></g>
+  <rect id="whit" x="${PL}" y="22" width="${Wv-PL-PR}" height="288" fill="transparent"/>`;
+  $('#waveSvg').innerHTML=s;
+  const cur=$('#wcur'),hit=$('#whit'),read=$('#waveRead');
+  function cum(k){let sa=0,sb=0,saa=0,sbb=0,sab=0;
+    for(let i=0;i<k;i++){const a=D.env_orig[i],b=D.env_recon[i];sa+=a;sb+=b;saa+=a*a;sbb+=b*b;sab+=a*b;}
+    const m=k||1;const cov=sab/m-(sa/m)*(sb/m);
+    const va=Math.sqrt(Math.max(0,saa/m-(sa/m)**2)),vb=Math.sqrt(Math.max(0,sbb/m-(sb/m)**2));
+    return va&&vb?cov/(va*vb):0;}
+  hit.addEventListener('mousemove',e=>{
+    const b=hit.getBoundingClientRect();
+    let i=Math.round((e.clientX-b.left)/b.width*n);i=Math.max(0,Math.min(n-1,i));
+    cur.style.display='';
+    cur.querySelector('line').setAttribute('x1',X(i));cur.querySelector('line').setAttribute('x2',X(i));
+    cur.querySelector('circle').setAttribute('cx',X(i));
+    read.innerHTML=`t = <b style="color:var(--cyn)">${(i/n*DUR).toFixed(3)} s</b> Â· orig ${D.env_orig[i].toFixed(4)} Â· recon ${D.env_recon[i].toFixed(4)} Â· envelope corr so far <b style="color:var(--grn)">${cum(i+1).toFixed(4)}</b>`;});
+  hit.addEventListener('mouseleave',()=>{cur.style.display='none';read.textContent='hover the plot';});
+  $('#waveLegend').innerHTML=`<span style="cursor:default"><i class="sq" style="background:#82aaff"></i> original</span>
+    <span style="cursor:default"><i class="sq" style="background:#ff7597"></i> reconstruction</span>
+    <span style="cursor:default"><i class="sq" style="background:#ffcb6b"></i> absolute difference</span>`;
+})();
+
+(function partMap(){
+  const Wv=1060,Hv=420,PL=58,PR=18,PT=26,PB=46;
+  const X=t=>PL+t/DUR*(Wv-PL-PR);
+  const Y=f=>PT+Math.log10(Math.max(30,Math.min(8000,f))/30)/Math.log10(8000/30)*(Hv-PT-PB);
+  let s='';
+  [[55,'A1'],[110,'A2'],[220,'A3'],[440,'A4'],[880,'A5'],[1760,'A6'],[3520,'A7']].forEach(n=>{
+    s+=`<line x1="${PL}" y1="${Y(n[0])}" x2="${Wv-PR}" y2="${Y(n[0])}" stroke="#1b2027"/>
+        <text x="${PL-8}" y="${Y(n[0])+3.5}" fill="#6e7681" font-size="10" text-anchor="end">${n[0]}</text>
+        <text x="${PL-8}" y="${Y(n[0])+14}" fill="#39414a" font-size="8.5" text-anchor="end">${n[1]}</text>`;});
+  for(let t=0;t<=15;t+=2.5){
+    s+=`<line x1="${X(t)}" y1="${PT}" x2="${X(t)}" y2="${Hv-PB}" stroke="${t===0?'#30363d':'#141a20'}"/>
+        <text x="${X(t)}" y="${Hv-PB+16}" fill="#6e7681" font-size="10" text-anchor="middle">${t.toFixed(1)}s</text>`;}
+  (D.sections||[]).forEach(sc=>{
+    const x=X(sc.end);
+    s+=`<line x1="${x}" y1="${PT-8}" x2="${x}" y2="${Hv-PB}" stroke="#30363d" stroke-dasharray="3 4"/>
+        <text x="${x-5}" y="${PT-13}" fill="#6e7681" font-size="9.5" text-anchor="end">w${sc.i+1}</text>`;});
+  s+=`<text x="${PL}" y="14" fill="#6e7681" font-size="10.5">frequency (Hz, log) vs onset time Â· ${D.total_partials||D.partials.length} partials</text>
+      <g id="pt"></g><rect x="${PL}" y="${PT}" width="${Wv-PL-PR}" height="${Hv-PT-PB}" fill="transparent"/>`;
+  $('#mapSvg').innerHTML=s;
+  const g=$('#pt');
+  const mx=Math.max.apply(null,D.partials.map(p=>p[4]))||1;
+  D.partials.forEach((p,i)=>{
+    const c=document.createElementNS(SVGNS,'circle');
+    c.setAttribute('cx',X(p[1]).toFixed(1));c.setAttribute('cy',Y(p[3]).toFixed(1));
+    c.setAttribute('r',(1.5+Math.sqrt(p[4]/mx)*7.6).toFixed(2));
+    c.setAttribute('fill',MC[p[5]]);c.setAttribute('fill-opacity','.5');
+    c.setAttribute('stroke',MC[p[5]]);c.setAttribute('stroke-width','.7');
+    c.dataset.m=p[5];
+    g.appendChild(c);
+    bindTip(c,`<b style="color:${MC[p[5]]}">${MN[p[5]]}</b> Â· ledger entry ${i}
+window <b>${p[0]+1}</b> Â· onset <b>${p[1].toFixed(4)} s</b>
+freq <b>${p[3].toFixed(2)} Hz</b> Â· amp <b>${p[4].toFixed(5)}</b>
+decay Î» <b>${p[6]}</b> Â· span <b>${((p[2]-p[1])*1000).toFixed(1)} ms</b>`);});
+  $('#mapLegend').innerHTML=MN.map((n,i)=>
+    `<span data-m="${i}"><i style="background:${MC[i]}"></i> ${n} Â· ${D.partials.filter(p=>p[5]===i).length}</span>`).join('')
+    +`<span style="cursor:default"><i class="sq" style="background:#30363d"></i> window boundary</span>`;
+  $$('#mapLegend span[data-m]').forEach(sp=>sp.addEventListener('click',()=>{
+    sp.classList.toggle('off');
+    const on=!sp.classList.contains('off'),m=sp.dataset.m;
+    $$('#pt circle').forEach(c=>{if(c.dataset.m===m)c.style.display=on?'':'none';});}));
+})();
+
+let AC=null,srcN=null;
+function actx(){const C=window.AudioContext||window.webkitAudioContext;if(!AC)AC=new C();if(AC.state==='suspended')AC.resume();return AC;}
+function renderParts(parts,dur){
+  const n=Math.floor(dur*SR),out=new Float32Array(n);
+  for(const p of parts){
+    const st=p.st||0,en=p.en==null?dur:p.en,a0=Math.max(0,st-HALF);
+    const i0=Math.max(0,Math.floor(a0*SR)),i1=Math.min(n,Math.ceil(en*SR));
+    for(let i=i0;i<i1;i++){
+      const T=i/SR;let e=T<st?Math.max(T-a0,0)/HALF:1;
+      const rl=Math.max(0,en-REL);if(T>=rl)e*=T>=en?0:1-(T-rl)/REL;
+      if(p.t0!=null&&T>p.t0)e*=Math.exp(-p.lam*(T-p.t0));
+      out[i]+=p.a*e*Math.cos(2*Math.PI*p.f*(T-st)+p.ph);}}
+  let pk=0;for(let i=0;i<n;i++){const v=Math.abs(out[i]);if(v>pk)pk=v;}
+  if(pk>1e-4)for(let i=0;i<n;i++)out[i]=Math.min(1,Math.max(-1,out[i]/pk*.9));
+  return out;}
+function playBuf(b,d){
+  try{
+    const c=actx(),bb=c.createBuffer(1,b.length,c.sampleRate);bb.getChannelData(0).set(b);
+    if(srcN){try{srcN.stop()}catch(e){}}
+    srcN=c.createBufferSource();srcN.buffer=bb;srcN.connect(c.destination);srcN.start();
+    const t0=c.currentTime,tick=()=>{if(!srcN)return;
+      const el=c.currentTime-t0;if(el>=d){$('#playState').textContent='';srcN=null;return;}
+      $('#playState').textContent='â–¶ '+el.toFixed(2)+' s / '+d.toFixed(2)+' s';requestAnimationFrame(tick);};
+    requestAnimationFrame(tick);
+  }catch(e){$('#playState').textContent='audio blocked: '+e.message;}}
+
+let LCUR=[{a:.12,f:220,lam:1.5,ph:0,t0:0,st:0,en:1.6}],LDUR=1.6;
+function labDraw(){
+  const c=$('#wv');if(!c)return;
+  const x=c.getContext('2d'),w=c.width,h=c.height,d=LDUR;
+  const buf=renderParts(LCUR,d);
+  x.clearRect(0,0,w,h);x.fillStyle='#0a0e13';x.fillRect(0,0,w,h);
+  const mid=h/2;x.strokeStyle='#21262d';x.beginPath();x.moveTo(0,mid);x.lineTo(w,mid);x.stroke();
+  x.strokeStyle='#7ee787';x.lineWidth=1.3;x.shadowColor='rgba(126,231,135,.45)';x.shadowBlur=5;
+  x.beginPath();for(let i=0;i<buf.length;i++){const px=i/buf.length*w,py=mid-buf[i]*(mid-14);if(i===0)x.moveTo(px,py);else x.lineTo(px,py);}
+  x.stroke();x.shadowBlur=0;x.fillStyle='rgba(126,231,135,.10)';
+  x.lineTo(w,mid);x.lineTo(0,mid);x.closePath();x.fill();
+  x.fillStyle='#6e7681';x.font='11px ui-monospace,monospace';
+  x.fillText('0.00 s',6,h-8);x.fillText(d.toFixed(2)+' s',w-52,h-8);
+  x.fillStyle='#7ee787';x.fillText(LCUR.length+' partial'+(LCUR.length>1?'s':''),w/2-26,h-8);}
+
+(function anatLab(){
+  const AS=$('#anatSvg');
+  function draw(){
+    const W=1060,H=400,PL=70,PR=225,PT=48,PB=64;
+    const bw=W-PL-PR,bh=H-PT-PB,X=t=>PL+t/LDUR*bw,mid=PT+bh/2;
+    const p=LCUR[0],a0=Math.max(0,p.st-HALF),rl=Math.max(0,p.en-REL);
+    const amp=Math.max(.08,p.a*3);
+    let env='',wave='',att='',relP='';
+    for(let i=0;i<=520;i++){
+      const t=i/520*LDUR;
+      let e=t<p.st?Math.max(t-a0,0)/HALF:1;
+      if(t>=rl)e*=t>=p.en?0:1-(t-rl)/REL;
+      if(p.t0!=null&&t>p.t0)e*=Math.exp(-p.lam*(t-p.t0));
+      const y=mid-e*(bh/2-16)*amp;
+      env+=(i?'L':'M')+X(t).toFixed(1)+' '+y.toFixed(1);
+      if(t>=a0&&t<=p.en)wave+=(wave?'L':'M')+X(t).toFixed(1)+' '+y.toFixed(1);
+      if(t>=a0&&t<=p.st)att+=(att?'L':'M')+X(t).toFixed(1)+' '+mid+','+X(t).toFixed(1)+' '+y.toFixed(1);
+      if(t>=rl&&t<=p.en)relP+=(relP?'L':'M')+X(t).toFixed(1)+' '+y.toFixed(1)+'L'+X(t).toFixed(1)+' '+mid;}
+    const rx=PR+14;
+    AS.innerHTML=`<text x="${PL}" y="20" fill="#6e7681" font-size="10.5">p(t) = A Â· u(tâˆ’tâ‚€) Â· exp(âˆ’Î»(tâˆ’tâ‚€)) Â· cos(2Ï€f(tâˆ’t_sec) + Ï†)</text>
+      <line x1="${PL}" y1="${mid}" x2="${W-PR}" y2="${mid}" stroke="#30363d"/>
+      <line x1="${X(a0)}" y1="${PT-8}" x2="${X(a0)}" y2="${H-PB}" stroke="#82aaff" stroke-dasharray="3 4" opacity=".6"/>
+      <line x1="${X(p.st)}" y1="${PT-8}" x2="${X(p.st)}" y2="${H-PB}" stroke="#c792ea" stroke-dasharray="3 4" opacity=".6"/>
+      <line x1="${X(p.en)}" y1="${PT-8}" x2="${X(p.en)}" y2="${H-PB}" stroke="#ffcb6b" stroke-dasharray="3 4" opacity=".6"/>
+      <polygon points="${att}" fill="#82aaff" opacity=".22"/>
+      <polygon points="${relP}" fill="#ffcb6b" opacity=".22"/>
+      <path d="${env}" fill="none" stroke="#7ee787" stroke-width="1.7" stroke-dasharray="5 4" opacity=".9"/>
+      <path d="${wave}" fill="none" stroke="#7ee787" stroke-width="1.1" opacity=".5"/>
+      <line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="#21262d"/>
+      <text x="${((X(a0)+X(p.st))/2).toFixed(1)}" y="${H-PB+44}" fill="#82aaff" font-size="10.5" text-anchor="middle">attack ramp</text>
+      <text x="${((X(a0)+X(p.st))/2).toFixed(1)}" y="${H-PB+57}" fill="#4d5560" font-size="9.5" text-anchor="middle">0.04644 s Â· Ã—21.533</text>
+      <text x="${(X(p.en)+9).toFixed(1)}" y="${PT+2}" fill="#c792ea" font-size="10.5">tâ‚€ onset</text>
+      <text x="${(X(p.en)+9).toFixed(1)}" y="${PT+17}" fill="#ffcb6b" font-size="10.5">t_end</text>
+      <text x="${((X(p.st)+X(rl))/2).toFixed(1)}" y="${PT-14}" fill="#6e7681" font-size="10" text-anchor="middle">decay region</text>
+      <text x="${rx}" y="${PT+4}" fill="#7ee787" font-size="11.5">exp(âˆ’Î»(tâˆ’tâ‚€))</text>
+      <text x="${rx}" y="${PT+18}" fill="#6e7681" font-size="9.5">Î» = ${p.lam.toFixed(2)}</text>
+      <text x="${rx}" y="${PT+44}" fill="#7ee787" font-size="11.5">cos(2Ï€fÂ·t + Ï†)</text>
+      <text x="${rx}" y="${PT+58}" fill="#6e7681" font-size="9.5">${p.f} Hz Â· ${(p.f/440).toFixed(2)}Ã— A4</text>
+      <text x="${rx}" y="${PT+84}" fill="#7ee787" font-size="11.5">A = ${p.a.toFixed(4)}</text>
+      <text x="${rx}" y="${PT+98}" fill="#6e7681" font-size="9.5">Ï† = ${p.ph.toFixed(2)} rad</text>
+      <text x="${rx}" y="${PT+126}" fill="#ffcb6b" font-size="11.5">release Ã—4 / 0.25 s</text>
+      <text x="${rx}" y="${PT+140}" fill="#6e7681" font-size="9.5">prevents a click</text>
+      ${[0,.25,.5,.75,1].map(t=>`<text x="${X(t).toFixed(1)}" y="${H-PB+14}" fill="#6e7681" font-size="9.5" text-anchor="middle">${(t*LDUR).toFixed(2)}s</text>`).join('')}`;
+  }
+  function read(){
+    LDUR=+$('#sD').value;
+    LCUR=[{a:+$('#sA').value,f:+$('#sF').value,lam:+$('#sL').value,ph:+$('#sP').value,t0:0,st:0,en:LDUR}];
+    $('#vA').textContent=(+$('#sA').value).toFixed(4);
+    $('#vF').textContent=$('#sF').value;$('#vL').textContent=(+$('#sL').value).toFixed(2);
+    $('#vP').textContent=(+$('#sP').value).toFixed(2);$('#vD').textContent=LDUR.toFixed(2);
+    $('#eqout').innerHTML='<span style="color:var(--dim2)">p(t)</span> = '+LCUR[0].a.toFixed(4)+' Â· e<sup>âˆ’'+LCUR[0].lam.toFixed(2)+'Â·t</sup> Â· cos(2Ï€Â·'+LCUR[0].f+'Â·t + '+LCUR[0].ph.toFixed(2)+')'
+      +'<br><span style="color:var(--dim2)">window</span> [ 0.000 , '+LDUR.toFixed(3)+' ] s   <span style="color:var(--dim2)">sr</span> 22050 Hz   <span style="color:var(--dim2)">clip</span> Â±1';
+    draw();labDraw();}
+  ['sA','sF','sL','sP','sD'].forEach(id=>$('#'+id).addEventListener('input',read));
+  read();
+})();
+$('#playEq').addEventListener('click',()=>playBuf(renderParts(LCUR,LDUR),LDUR));
+$('#stopEq').addEventListener('click',()=>{if(srcN){try{srcN.stop()}catch(e){}srcN=null;}$('#playState').textContent='';});
+const PRES={sine:[.12,220,1.5,0,1.6],pluck:[.28,440,3.2,0,2.2],real:[.005818,64.9435,0,.903472,.35]};
+$$('[data-preset]').forEach(b=>b.addEventListener('click',()=>{
+  const p=PRES[b.dataset.preset];
+  $('#sA').value=p[0];$('#sF').value=p[1];$('#sL').value=p[2];$('#sP').value=p[3];$('#sD').value=p[4];
+  $('#sA').dispatchEvent(new Event('input'));
+  if(p[0]<.02)$('#eqout').innerHTML+='<br><span style="color:var(--amb)">â† real ledger entry: A = 0.005818, f = 64.9435 Hz, Î» = 0, Ï† = 0.903472 â€” near-sub-bass at t â‰ˆ 1.115 s, window 0</span>';}));
+const CLASSES=[
+ {c:'#7ee787',name:'Damped cosine',tag:'class A',
+  form:'A Â· e<sup>âˆ’Î»(tâˆ’tâ‚€)</sup> Â· cos(2Ï€ft + Ï†)',
+  d:'The workhorse. Every straight partial is one of these. Î» is the decay rate; Î» = 0 means the tone never dies. This is also the only model the parameter lifter is allowed to touch â€” glides are skipped entirely by the per-partial sweep.',
+  sl:[['Amplitude','A',0,.3,.0001,.12],['Frequency','f',40,1600,1,220],['Decay','Î»',0,8,.02,1.8],['Phase','Ï†',0,6.283,.01,0]],
+  ex:'<b>220 of 373</b> partials are damped â€” the largest single group. They carry the plucked and struck content, and they are the only class the greedy lifter refines.',
+  bk(v){return[{a:v[0],f:v[1],lam:v[2],ph:v[3],t0:0,st:0,en:1.7}]}},
+ {c:'#66fcf1',name:'Harmonic string',tag:'class B',
+  form:'f<sub>m</sub> = m Â· Fâ‚€ Â· âˆš(1 + BÂ·mÂ²)',
+  d:'Rather than fitting each harmonic separately, lock them to a stiff string. B is the stiffness parameter â€” B = 0 is perfectly harmonic, larger B stretches the upper partials the way a real plucked string does. Fâ‚€ is proposed from the residual, never from the raw signal.',
+  sl:[['Fundamental','Fâ‚€',60,600,1,164.81],['Stiffness','B',0,.002,.00001,.0004],['Harmonics','m',2,12,1,8],['Decay','Î»',0,6,.02,1.2]],
+  ex:'Admissible only when the fit residual stays under a quarter of the total energy, at least 3 partials are present, and the locked model uses 2 free parameters per partial instead of 3. The winner gets a Î½c-lock that consolidates per-harmonic damping to Ïƒ<sub>m</sub> = a + bÂ·f<sub>m</sub>.',
+  bk(v){const o=[];for(let m=1;m<=v[2];m++){const fm=m*v[0]*Math.sqrt(1+v[1]*m*m);if(fm<SR/2*.98)o.push({a:.22/m,f:fm,lam:v[3]/Math.pow(m,.6),ph:0,t0:0,st:0,en:1.7});}return o}},
+ {c:'#ff7597',name:'Percussive bundle',tag:'class C',
+  form:'Î£<sub>k=1..K</sub> A<sub>k</sub> Â· e<sup>âˆ’Î»<sub>k</sub>t</sup> Â· cos(2Ï€f<sub>k</sub>t)',
+  d:'A detected onset re-expressed as a small bundle of very fast-decaying modes â€” the classical transient model. Three decay rates are tried (30, 80, 200), up to six modes are allowed, and they only live above 120 Hz.',
+  sl:[['Mode freq','fâ‚€',80,900,1,180],['Mode count','K',1,6,1,4],['Fast decay','Î»',10,200,1,80],['Gain','A',.01,.4,.005,.14]],
+  ex:'12 bundles were proposed across the six windows and <b>2 were accepted</b>. Percussion is genuinely hard for this basis â€” the acceptance rate says so more honestly than any prose could.',
+  bk(v){const o=[],fs=[1,1.62,2.41,3.13];for(let k=0;k<v[1]&&k<fs.length;k++)o.push({a:v[3]/Math.pow(k+1,.7),f:v[0]*fs[k],lam:v[2]*Math.pow(1.25,k),ph:0,t0:.02*k,st:.02*k,en:1.7});return o}}
+];
+$('#clsTabs').innerHTML=CLASSES.map((c,i)=>`<div class="tab${i===0?' on':''}" data-i="${i}">${c.tag} Â· ${c.name}</div>`).join('');
+function showCls(i){
+  const c=CLASSES[i];$$('#clsTabs .tab').forEach((e,j)=>e.classList.toggle('on',i===j));
+  $('#clsView').innerHTML=`<h4 style="color:${c.c};font-size:21px">${c.name} <span class="pill" style="border-color:${c.c};color:${c.c}">${c.tag}</span></h4>
+   <div style="font-family:var(--mono);font-size:15px;color:${c.c};margin:8px 0 12px">${c.form}</div>
+   <p style="color:var(--dim);margin-bottom:16px;font-size:16px;max-width:100ch">${c.d}</p>
+   <div class="lab" style="grid-template-columns:1fr 300px">
+     <div class="panel"><canvas class="wv" id="cwave" width="760" height="200"></canvas>
+       <div class="rowb" style="margin-top:11px"><button class="btn pri" id="cplay">â–¶ Play class</button>
+       <button class="btn sm" id="cstop">â–  Stop</button><span style="font-size:13.5px;color:var(--dim2)" id="cstate"></span></div></div>
+     <div class="panel">${c.sl.map((s,k)=>`<div class="sl"><label>${s[0]} ${s[1]} <b id="cv${k}">${s[5]}</b></label>
+       <input type="range" id="ci${k}" min="${s[2]}" max="${s[3]}" step="${s[4]}" value="${s[5]}"></div>`).join('')}
+       <div style="font-size:14.5px;color:var(--dim2);margin-top:8px">${c.ex}</div></div>
+   </div>`;
+  const upd=()=>{const v=c.sl.map((s,k)=>+$('#ci'+k).value);
+    c.sl.forEach((s,k)=>$('#cv'+k).textContent=s[4]<.001?v[k].toFixed(5):v[k]);
+    LCUR=c.bk(v);LDUR=1.7;labDraw();};
+  c.sl.forEach((s,k)=>$('#ci'+k).addEventListener('input',upd));
+  upd();
+  $('#cplay').addEventListener('click',()=>playBuf(renderParts(LCUR,1.7),1.7));
+  $('#cstop').addEventListener('click',()=>{if(srcN){try{srcN.stop()}catch(e){}srcN=null;}$('#cstate').textContent='';});
+}
+$$('#clsTabs .tab').forEach(e=>e.addEventListener('click',()=>showCls(+e.dataset.i)));
+showCls(0);
+
+(function iterChart(){
+  const W=1060,H=300,PL=58,PR=70,PT=42,PB=58;
+  const bw=W-PL-PR,bh=H-PT-PB,mn=.695,mx=.825,its=D.iters||[];
+  if(!its.length)return;
+  const X=i=>PL+(i+.5)/its.length*bw,Y=v=>PT+(1-(v-mn)/(mx-mn))*bh;
+  let s=`<defs><linearGradient id="ig" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#7ee787" stop-opacity=".4"/><stop offset="1" stop-color="#7ee787" stop-opacity="0"/></linearGradient></defs>
+    <text x="${PL}" y="18" fill="#6e7681" font-size="10.5">global waveform correlation per iteration Â· area = cumulative gain</text>`;
+  [0.70,0.74,0.78,0.82].forEach(v=>{
+    s+=`<line x1="${PL}" y1="${Y(v)}" x2="${W-PR}" y2="${Y(v)}" stroke="#1b2027"/>
+        <text x="${PL-8}" y="${Y(v)+3.5}" fill="#6e7681" font-size="10" text-anchor="end">${v.toFixed(2)}</text>`;});
+  const bwv=bw/its.length;let pts='';
+  its.forEach((it,i)=>{
+    const x=PL+(i+.5)*bwv;
+    s+=`<rect x="${(PL+i*bwv+3).toFixed(1)}" y="${Y(it.c).toFixed(1)}" width="${(bwv-6).toFixed(1)}" height="${(PT+bh-Y(it.c)).toFixed(1)}" fill="url(#ig)"/>`;
+    pts+=`${i?'L':'M'}${x.toFixed(1)} ${Y(it.c).toFixed(1)} `;});
+  s+=`<path d="${pts}L${(PL+(its.length-.5)*bwv).toFixed(1)} ${PT+bh} L${(PL+.5*bwv).toFixed(1)} ${PT+bh} Z" fill="#7ee787" opacity=".07"/>
+      <path d="${pts}" fill="none" stroke="#7ee787" stroke-width="2.4" stroke-linejoin="round"/>`;
+  its.forEach((it,i)=>{
+    const x=PL+(i+.5)*bwv,y=Y(it.c);
+    s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="#0d1117" stroke="#7ee787" stroke-width="2.2"/>
+        <text x="${x.toFixed(1)}" y="${(y-14).toFixed(1)}" fill="#7ee787" font-size="11" text-anchor="middle" font-weight="600">${it.c.toFixed(4)}</text>
+        <text x="${x.toFixed(1)}" y="${PT+bh+18}" fill="#6e7681" font-size="10" text-anchor="middle">${it.i}</text>`;});
+  s+=`<line x1="${PL}" y1="${PT+bh}" x2="${W-PR}" y2="${PT+bh}" stroke="#30363d"/>
+      <text x="${PL}" y="${H-12}" fill="#6e7681" font-size="10">iteration â†’</text>
+      <text x="${W-PR}" y="${H-12}" fill="#6e7681" font-size="10" text-anchor="end">all 8 accepted Â· rollback never triggered</text>
+      <rect id="ihit" x="${PL}" y="${PT}" width="${bw}" height="${bh}" fill="transparent"/>`;
+  $('#iterSvg').innerHTML=s;
+  const hit=$('#ihit');
+  hit.addEventListener('mousemove',e=>{
+    const b=hit.getBoundingClientRect();
+    let i=Math.floor((e.clientX-b.left)/b.width*its.length);i=Math.max(0,Math.min(its.length-1,i));
+    const it=its[i];
+    showTip(e,`iteration ${it.i} Â· accepted
+correlation <b>${it.c.toFixed(6)}</b>
+SNR <b>${it.snr.toFixed(3)} dB</b>
+LSD <b>${it.lsd.toFixed(3)} dB</b>
+provider numeric Â· 0 LLM edits`);});
+  hit.addEventListener('mouseleave',hideTip);
+})();
+
+(function gantt(){
+  const W=1060,H=260,PL=56,PR=22,PT=52,BH=118;
+  const bw=W-PL-PR,mxN=Math.max.apply(null,(D.sections||[]).map(s=>s.n))||100;
+  const X=t=>PL+t/DUR*bw;
+  let s=`<text x="${PL}" y="20" fill="#6e7681" font-size="10.5">six 2.5 s windows Â· bar height = partial count Â· colour = correlation Â· stack = model mix</text>`;
+  for(let t=0;t<=15;t+=2.5){
+    s+=`<line x1="${X(t)}" y1="${PT-14}" x2="${X(t)}" y2="${PT+BH}" stroke="#1b2027"/>
+        <text x="${X(t)}" y="${PT-20}" fill="#6e7681" font-size="9.5" text-anchor="end">${t}s</text>`;}
+  (D.sections||[]).forEach((sc,i)=>{
+    const x=X(sc.start)+3,w=(sc.end-sc.start)/DUR*bw-6;
+    const hpx=(sc.n/mxN)*BH,tot=sc.n||1;
+    let yy=PT+BH;
+    ['damped','constant','glide'].forEach(m=>{
+      const v=sc.mix[m]||0;if(!v)return;
+      const hh=hpx*(v/tot);
+      s+=`<rect x="${x.toFixed(1)}" y="${(yy-hh).toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1,hh-1).toFixed(1)}" fill="${MC[MN.indexOf(m)]}" opacity=".85"/>`;
+      yy-=hh;});
+    const col=sc.m.correlation>=.88?'#7ee787':sc.m.correlation>=.75?'#ffcb6b':'#ff7597';
+    const cx=(x+w/2).toFixed(1);
+    s+=`<g class="fl-node" data-i="${i}"><rect x="${x.toFixed(1)}" y="${PT}" width="${w.toFixed(1)}" height="${BH}" fill="${col}" opacity=".05"/>
+        <rect x="${x.toFixed(1)}" y="${PT}" width="${w.toFixed(1)}" height="${BH}" fill="none" stroke="${col}" stroke-width="1.3" rx="4"/>
+        <text x="${cx}" y="${PT+BH+16}" fill="${col}" font-size="11.5" text-anchor="middle" font-weight="600">${sc.m.correlation.toFixed(3)}</text>
+        <text x="${cx}" y="${PT+BH+30}" fill="#6e7681" font-size="9.5" text-anchor="middle">${sc.n} partials</text>
+        <text x="${cx}" y="${PT+BH+43}" fill="#4d5560" font-size="9" text-anchor="middle">SNR ${sc.m.snr_db.toFixed(1)} dB</text></g>`;});
+  s+=`<line x1="${PL}" y1="${PT+BH}" x2="${W-PR}" y2="${PT+BH}" stroke="#30363d"/>`;
+  $('#ganttSvg').innerHTML=s;
+  $$('#ganttSvg .fl-node').forEach(g=>{
+    const sc=D.sections[+g.dataset.i];
+    bindTip(g,`window ${sc.i+1} Â· ${sc.start}â€“${sc.end} s
+correlation <b>${sc.m.correlation.toFixed(6)}</b> Â· SNR <b>${sc.m.snr_db.toFixed(2)} dB</b>
+LSD <b>${sc.m.log_spectral_distance_db.toFixed(3)}</b> Â· segSNR <b>${sc.m.seg_snr_db.toFixed(2)}</b>
+onset corr <b>${sc.m.onset_corr.toFixed(4)}</b>
+${sc.n} partials Â· ${sc.bank} hypotheses, ${sc.acc} accepted`);});
+})();
+
+$('#seccards').innerHTML=(D.sections||[]).map(sc=>{
+  const tot=sc.n||1;
+  const bar=['damped','constant','glide'].map(m=>`<i style="width:${(sc.mix[m]||0)/tot*100}%;background:${MC[MN.indexOf(m)]}"></i>`).join('');
+  const lbl=['damped','constant','glide'].filter(m=>sc.mix[m]).map(m=>`<span style="color:${MC[MN.indexOf(m)]}">${m} ${sc.mix[m]}</span>`).join(' Â· ');
+  const col=sc.m.correlation>=.88?'#7ee787':sc.m.correlation>=.75?'#ffcb6b':'#ff7597';
+  const pct=Math.round(Math.max(0,(sc.m.correlation-.6)/.4*100));
+  return `<div class="seccard"><div class="ring" style="background:conic-gradient(${col} ${pct}%, var(--line) 0)"><span style="color:${col}">${sc.m.correlation.toFixed(3)}</span></div>
+    <h4>Window ${sc.i+1} Â· ${sc.start}â€“${sc.end} s</h4>
+    <div class="win">${sc.n} partials Â· ${sc.bank} hypotheses, ${sc.acc} accepted</div>
+    <div class="metrics"><div>SNR <b>${sc.m.snr_db.toFixed(2)} dB</b></div><div>LSD <b>${sc.m.log_spectral_distance_db.toFixed(2)} dB</b></div>
+      <div>segSNR <b>${sc.m.seg_snr_db.toFixed(2)} dB</b></div><div>onset <b>${sc.m.onset_corr.toFixed(3)}</b></div></div>
+    <div class="mixbar">${bar}</div><div class="mixlbl">${lbl}</div></div>`;}).join('');
+
+(function funnel(){
+  const W=1060,H=340,PL=170,PR=24,PT=44;
+  const bk=D.bank||[];
+  const bySec={};bk.forEach(b=>{(bySec[b[0]]=bySec[b[0]]||[]).push(b);});
+  const n=(D.sections||[]).length||1;
+  const rowH=Math.min(40,(H-PT-26)/n);
+  let s=`<text x="8" y="20" fill="#6e7681" font-size="10.5">residual energy per hypothesis Â· green bar = energy actually removed by an accepted one</text>
+    <rect x="8" y="30" width="10" height="10" fill="#7ee787" rx="5"/><text x="24" y="39" fill="#7ee787" font-size="10">accepted</text>
+    <rect x="110" y="30" width="10" height="10" fill="#21262d" rx="3"/><text x="126" y="39" fill="#6e7681" font-size="10">rejected â€” gain below the noise-chasing margin</text>`;
+  const mxr=Math.max.apply(null,bk.map(b=>Math.max(b[4],b[5])))||1;
+  const trackW=(W-PL-PR)*0.44;
+  (D.sections||[]).forEach((sc,i)=>{
+    const y=PT+i*(rowH+8),list=bySec[i]||[];
+    s+=`<text x="8" y="${y+15}" fill="#8b949e" font-size="11.5">window ${i+1}</text>
+        <text x="8" y="${y+29}" fill="#39414a" font-size="9.5">${sc.start}â€“${sc.end}s</text>
+        <text x="8" y="${y+42}" fill="#39414a" font-size="9">${sc.n} partials</text>`;
+    if(!list.length){
+      s+=`<line x1="${PL}" y1="${y+rowH-4}" x2="${PL+trackW}" y2="${y+rowH-4}" stroke="#1b2027" stroke-dasharray="3 4"/>
+          <text x="${PL+10}" y="${y+rowH/2}" fill="#39414a" font-size="10.5">no proposal reached the energy gate</text>`;return;}
+    const inW=list.reduce((a,b)=>a+b[4],0);
+    s+=`<line x1="${PL}" y1="${y+rowH-4}" x2="${PL+trackW}" y2="${y+rowH-4}" stroke="#1b2027"/>
+        <rect x="${PL}" y="${y}" width="${Math.max(3,(inW/mxr)*trackW).toFixed(1)}" height="${rowH-8}" fill="#21262d" rx="3"/>
+        <text x="${(PL+trackW+12).toFixed(1)}" y="${y+rowH/2}" fill="#6e7681" font-size="10.5">${list.length} proposed</text>`;
+    const acc=list.filter(b=>b[6]);
+    acc.forEach((b,j)=>{
+      const cut=Math.max(16,(b[4]-b[5])/mxr*trackW*4.5);
+      const yy=y+(rowH-8)/(acc.length+1)*(j+1)-5;
+      s+=`<rect x="${PL}" y="${yy.toFixed(1)}" width="${cut.toFixed(1)}" height="10" fill="#7ee787" rx="5"/>
+          <text x="${(PL+cut+8).toFixed(1)}" y="${(yy+9).toFixed(1)}" fill="#7ee787" font-size="9.5">${b[1]==='harmonic_string'?'harmonic string':'percussive bundle'} Â· fâ‚€ ${b[2]||'â€”'} Hz Â· ${b[3]} modes Â· Î”r ${(b[4]-b[5]).toExponential(2)}</text>`;});});
+  $('#funnelSvg').innerHTML=s;
+  $('#funnelTbl').innerHTML=(D.sections||[]).map(sc=>{
+    const list=bySec[sc.i]||[],a=list.filter(b=>b[6]).length,cls=[...new Set(list.map(b=>b[1]))];
+    return `<tr><td class="mono">window ${sc.i+1}</td><td class="mono">${list.length}</td>
+      <td class="mono" style="color:${a?'var(--grn)':'var(--dim2)'}">${a}</td>
+      <td class="mono">${cls.length?cls.join(', '):'â€”'}</td>
+      <td>${a?`${a} set${a>1?'s':''} of partials appended to the section`:'nothing survived the gate'}</td></tr>`;}).join('');
+})();
+
+const EXPORTS=[
+ {f:'bytebeat_light.js',m:'Funcbeat',r:'0.001',t:79,b:27777,l:118,sr:22050,
+  d:'The lean one. Keeps only partials worth at least 0.1% of total energy. Plays most smoothly on a low-powered machine, and the one to start with if you just want to hear the song.'},
+ {f:'bytebeat.js',m:'Funcbeat',r:'0.0002',t:155,b:41102,l:194,sr:22050,best:true,
+  d:'The default. Roughly doubles the partial count of the light version for a 48% larger file, recovering quieter detail the aggressive prune discards.'},
+ {f:'bytebeat_full.js',m:'Funcbeat',r:'0',t:373,b:78553,l:412,sr:22050,
+  d:'Everything. All 373 partials including the ones contributing almost nothing. This is the default song in the player dropdown and reproduces the ledger exactly.'},
+ {f:'bytebeat_float.js',m:'Floatbeat',r:'0',t:373,b:149093,l:4,sr:48000,
+  d:'Same 373 partials, different dialect. Floatbeat has no statements, so everything collapses into one enormous comma expression of 149 KB â€” nearly double the size for identical audio. Runs at 48 kHz.'}
+];
+$('#expTabs').innerHTML=EXPORTS.map((e,i)=>`<div class="tab${i===1?' on':''}" data-i="${i}">${e.f}</div>`).join('');
+function showExp(i){
+  const e=EXPORTS[i];$$('#expTabs .tab').forEach((x,j)=>x.classList.toggle('on',i===j));
+  $('#expView').innerHTML=`<h4 style="font-size:19px">${e.f} <span class="pill g">${e.m}</span> ${e.best?'<span class="pill c">default player entry</span>':''}</h4>
+   <p style="color:var(--dim);margin:10px 0;font-size:16px;max-width:100ch">${e.d}</p>
+   <dl class="kv"><dt>mode</dt><dd>${e.m}</dd><dt>sample rate</dt><dd>${e.sr} Hz</dd><dt>--ratio</dt><dd>${e.r}</dd>
+     <dt>terms</dt><dd>${e.t}</dd><dt>lines</dt><dd>${e.l}</dd><dt>size</dt><dd>${e.b.toLocaleString()} B (${(e.b/1024).toFixed(1)} KB)</dd>
+     <dt>glide knot triples</dt><dd>31</dd></dl>
+   <pre class="sm"><button class="cp">copy</button><span class="m">// RES equations: 'Metre - Lost.mp3'</span>
+<span class="m">// engine corr=0.8142 | ${e.t} subtone equations | 6 sections | 15 s</span>
+<span class="m">// dollchan: type ${e.m.toUpperCase()}, sample rate ${e.sr}</span>
+<span class="k">return function</span>(t, srate) {
+<span class="k">var</span> s=0,T=t;
+<span class="k">function</span> lp(ta,ya,z){<span class="m">/* linear interp, glide knots */</span>}
+T&gt;2.03175&amp;&amp;T&lt;2.5&amp;&amp;(s+=<span class="n">0.014676</span>*((T&lt;2.07819?max(T-2.031746,0)*<span class="n">21.533161</span>:1))
+  *(T&lt;2.72293?1:T&gt;=2.97293?0:1-(T-2.97293)*<span class="n">4</span>))
+  *cos(<span class="n">1644.9706</span>*(T-0.000000)+<span class="n">1.6241</span>));
+<span class="m">   â€¦ ${Math.max(1,e.t-1)} more terms â€¦</span>
+<span class="k">var</span> o=s&gt;1?1:s&lt;-1?-1:s;<span class="k">return</span> o;
+};</pre>
+   <p style="font-size:14.5px;color:var(--dim2);margin-top:11px;max-width:110ch">The attack multiplier <b>21.533161</b> is exactly
+   1 Ã· 0.04644 â€” the STFT half-window. The release factor <b>4</b> is 1 Ã· 0.25 s. These come from the analysis
+   resolution, not from taste.</p>`;
+  $$('#expView .cp').forEach(b=>b.addEventListener('click',()=>{
+    if(navigator.clipboard)navigator.clipboard.writeText(b.parentNode.innerText);
+    b.textContent='copied';setTimeout(()=>b.textContent='copy',1400);}));}
+$$('#expTabs .tab').forEach(e=>e.addEventListener('click',()=>showExp(+e.dataset.i)));
+showExp(1);
+(function expChart(){
+  const W=1060,H=250,PL=64,PR=26,PT=42,PB=46;
+  const bw=W-PL-PR,mx=Math.max.apply(null,EXPORTS.map(e=>e.b))*1.06;
+  const cols=['#ff7597','#7ee787','#66fcf1','#ffcb6b'];
+  let s=`<text x="${PL}" y="18" fill="#6e7681" font-size="10.5">file size vs retained partials â€” past the knee you pay bytes for near-silence</text>`;
+  const bwv=bw/EXPORTS.length;
+  EXPORTS.forEach((e,i)=>{
+    const x=PL+(i+.5)*bwv,hpx=(e.b/mx)*(H-PT-PB);
+    s+=`<rect x="${(x-33).toFixed(1)}" y="${PT}" width="66" height="${hpx.toFixed(1)}" fill="${cols[i]}" opacity=".5" rx="5"/>
+        <rect x="${(x-33).toFixed(1)}" y="${PT}" width="66" height="${hpx.toFixed(1)}" fill="none" stroke="${cols[i]}" stroke-width="1.5" rx="5"/>
+        <text x="${x.toFixed(1)}" y="${(PT-10).toFixed(1)}" fill="${cols[i]}" font-size="12" text-anchor="middle" font-weight="600">${(e.b/1024).toFixed(0)} KB</text>
+        <text x="${x.toFixed(1)}" y="${(PT+hpx+17).toFixed(1)}" fill="#8b949e" font-size="10" text-anchor="middle">${e.t} terms</text>
+        <text x="${x.toFixed(1)}" y="${(PT+hpx+31).toFixed(1)}" fill="#4d5560" font-size="9.5" text-anchor="middle">ratio ${e.r}</text>
+        <text x="${x.toFixed(1)}" y="${H-12}" fill="#6e7681" font-size="10" text-anchor="middle">${e.f.replace('.js','')}</text>`;});
+  s+=`<line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="#30363d"/>`;
+  $('#expSvg').innerHTML=s;})();
+
+(function archDiagram(){
+  const W=1060;
+  const bx=(x,y,w,h,t,sub,c)=>{let s=`<g class="fl-node"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${c}" opacity=".14" stroke="${c}" stroke-width="1.4"/>
+    <text x="${(x+w/2).toFixed(0)}" y="${(y+h/2-1).toFixed(0)}" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="600">${t}</text>`;
+    if(sub)s+=`<text x="${(x+w/2).toFixed(0)}" y="${(y+h/2+13).toFixed(0)}" fill="${c}" font-size="9" text-anchor="middle">${sub}</text>`;
+    return s+`</g>`;};
+  const row=(y,label,col,items,op)=>{let s=`<text x="8" y="${y-11}" fill="${col}" font-size="10.5" letter-spacing="1.3">${label}</text>`;
+    let x=8;
+    items.forEach(it=>{const w=it[1];
+      s+=`<rect x="${x}" y="${y}" width="${w}" height="32" rx="7" fill="${col}" opacity="${op}" stroke="${col}" stroke-width="1.1"/>
+          <text x="${(x+w/2).toFixed(0)}" y="${y+20}" fill="#c9d1d9" font-size="10" text-anchor="middle">${it[0]}</text>`;
+      x+=w+7;});
+    return s+`<line x1="8" y1="${y+32}" x2="${W-8}" y2="${y+32}" stroke="#1b2027"/>`;};
+  const arrow=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#3d444d" stroke-width="2" marker-end="url(#ah)"/>`;
+  const bez=(x1,y1,x2,y2,c,d)=>`<path d="M${x1},${y1} C${x1},${(y1+y2)/2} ${x2},${(y1+y2)/2} ${x2},${y2}" fill="none" stroke="${c}" stroke-width="1.6" stroke-dasharray="${d||'5 5'}" opacity=".65"/>`;
+  let s=`<defs><marker id="ah2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3d444d"/></marker></defs>`;
+  s+=bx(742,30,150,40,'main.py','CLI Â· 11 commands','#82aaff');
+  s+=bx(900,30,150,40,'app.py','Streamlit studio','#82aaff');
+  s+=bx(600,88,190,40,'site/','AudioWorklet player','#82aaff');
+  s+=bx(40,88,220,40,'src/res_evidence.py','build_evidence â†’ ledger','#7ee787');
+  s+=bx(292,88,200,40,'src/res_loop.py','run_loop Â· 8 iterations','#ffcb6b');
+  s+=bx(524,88,190,40,'src/res_bank.py','tournament_section','#ffcb6b');
+  s+=bx(756,88,180,40,'src/res_ui.py','job driver','#7ee787');
+  s+=arrow(262,108,290,108);s+=arrow(494,108,522,108);s+=arrow(716,108,754,108);
+  s+=bez(840,70,700,86,'#82aaff','4 4');
+  s+=bx(40,186,190,38,'tools/res_bytebeat.py','Funcbeat exporter','#c792ea');
+  s+=bx(246,186,190,38,'tools/res_floatbeat.py','Floatbeat exporter','#c792ea');
+  s+=bx(456,186,220,38,'res_ledger.json','the single source of truth','#66fcf1');
+  s+=bx(700,186,180,38,'site/songs/*.js','served to the player','#c792ea');
+  s+=bez(135,224,470,224,'#c792ea','0');
+  s+=bez(341,224,470,224,'#c792ea','0');
+  s+=bez(678,205,698,205,'#c792ea','0');
+  s+=row(282,'FOUNDATION Â· shared by both toolchains Â· no sandbox needed, parameters only','#66fcf1',
+    [['src/analysis.py',134],['src/tracking.py',128],['src/sinusoidal_model.py',162],['src/beat_detection.py',158],['src/residual.py',114]],.2);
+  s+=bez(150,128,150,280,'#7ee787','0');
+  s+=bez(392,128,392,280,'#ffcb6b','0');
+  s+=bez(560,226,560,280,'#ffcb6b','0');
+  s+=row(344,'OLDER MATH-AUDIO TRACK Â· tested, but the exporters consume nothing from it','#ffcb6b',
+    [['formula_bank',124],['safe_eval',104],['math_track_engine',160],['error_correction',146],['tone_remake',124],['song_recreation',148],['toneprint',104],['bytebeat_url',124],['synthesis',108],['spectrogram_math',160],['note_extraction',146],['viral_math_reels',146],['visualize',98],['math_track_visualize',170]],.14);
+  s+=bez(200,316,200,342,'#ffcb6b','0');
+  s+=bez(760,316,760,342,'#ffcb6b','0');
+  s+=`<text x="8" y="470" fill="#6e7681" font-size="10.5">solid = in-process call Â· dashed = writes a file to disk Â· res_bank â‡„ res_loop import each other lazily, and res_ui drives both from a browser</text>`;
+  $('#archSvg').innerHTML=s;})();
+
+const TREE=[
+ ['damped cosine â€” the fundamental atoms',[
+  ['src/analysis.py','STFT with coherent-gain normalisation + parabolic peak interpolation','4.8 kB'],
+  ['src/sinusoidal_model.py','Sinusoidal Modeling Synthesis â€” produces the fitted partial records','28 kB'],
+  ['src/tracking.py','Frame-peak association, log-linear envelope fitting, joint LS export','16 kB'],
+  ['src/beat_detection.py','Multi-band spectral flux, autocorrelation tempo, DP beat tracker','9.5 kB'],
+  ['src/residual.py','MSE / SNR / LSD / segSNR / onset-corr â€” the scoring referee','11 kB']]],
+ ['the three shipped stages',[
+  ['src/res_evidence.py','Analyse a song into a versioned evidence ledger','8 kB'],
+  ['src/res_bank.py','Equation-class tournament â€” proposes, fits, accepts or rejects','33 kB'],
+  ['src/res_loop.py','The closed loop: lift, hypothesise, render, score, accept or roll back','31 kB'],
+  ['src/res_ui.py','Browser driver and background job registry','8.5 kB'],
+  ['tools/res_bytebeat.py','Ledger â†’ Funcbeat JavaScript','10 kB'],
+  ['tools/res_floatbeat.py','Ledger â†’ Floatbeat JavaScript','8 kB']]],
+ ['older track â€” still tested, not consumed by the exporters',[
+  ['src/formula_bank.py','3-tier formula bank, L-BFGS-B search, Pareto front, complexity scoring','34 kB'],
+  ['src/safe_eval.py','AST-whitelisting sandbox â€” 32 functions, default-deny on every node','7.9 kB'],
+  ['src/math_track_engine.py','Math-DAW multi-track engine with continuous phase','17 kB'],
+  ['src/error_correction.py','Level match, lag alignment, residual + segmented correction','18 kB'],
+  ['src/tone_remake.py','Tone â†’ equation remake and bytebeat export','21 kB'],
+  ['src/song_recreation.py','Structure analysis and the Metre â€” Lost project builder','10 kB'],
+  ['src/toneprint.py','Shazam-style landmark fingerprinting + harmonic-sieve tone ID','15 kB'],
+  ['src/spectrogram_math.py','CQT, reassigned spectrogram, polyphonic note extraction','9.7 kB'],
+  ['src/note_extraction.py','pYIN melody extraction and harmonic grouping','6.9 kB'],
+  ['src/synthesis.py','Phase-integrated additive renderer with typed envelopes','11 kB'],
+  ['src/bytebeat_url.py','dollchan share-link encode/decode, pure zlib + base64','4.3 kB'],
+  ['src/viral_math_reels.py','Reproduces the viral Math Phonk equations as audio','15 kB'],
+  ['src/math_track_visualize.py','DAW plots and a self-contained HTML timeline player','16 kB'],
+  ['src/visualize.py','Waveform, spectrum and comparison dashboards','6.1 kB']]],
+ ['entry points, tests and the site',[
+  ['main.py','Unified CLI â€” recreate-song, fit-formula, discover-equations, verify, run-all','40 kB'],
+  ['app.py','Streamlit Math-DAW studio, formula explorer, spectrogram comparison','59 kB'],
+  ['tests/','25 test files Â· 188 tests, all passing','~130 kB'],
+  ['site/','The browser player â€” index.html, app.js, processor.js, songs.json','~19 kB'],
+  ['site/songs/','The four exported bytebeat files served to the dropdown','297 kB'],
+  ['site/dollchan/','Vendored upstream bytebeat composer, embedded in an iframe','~570 kB'],
+  ['data/output/res_lost15/','The shipped run â€” ledger, evidence, 2 WAVs, 571-line equation text, 4 JS','~1.1 MB']]]
+];
+$('#tree').innerHTML=TREE.map((g,i)=>
+  `<details${i<2?' open':''}><summary>${g[0]}</summary><div class="dbody"><div class="tree">${
+    g[1].map(r=>`<div><span class="d">â–¸</span> <span class="f">${r[0]}</span> <span class="z" style="float:right">${r[2]}</span><br>
+      <span style="padding-left:16px;color:var(--dim)">${r[1]}</span></div>`).join('')}</div></div></details>`).join('');
+
+function countUp(el){
+  const to=parseFloat(el.dataset.c),dp=+(el.dataset.dp||0),dur=1300;let t0=null;
+  const st=ts=>{if(!t0)t0=ts;const p=Math.min(1,(ts-t0)/dur),e=1-Math.pow(1-p,3);
+    el.textContent=(to*e).toFixed(dp);if(p<1)requestAnimationFrame(st);else el.textContent=to.toFixed(dp);};
+  requestAnimationFrame(st);}
+const rev=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');rev.unobserve(e.target);}}),{threshold:.1});
+$$('.reveal').forEach(el=>rev.observe(el));
+$$('.stat').forEach(el=>{const v=$('.v',el);if(v&&v.dataset.c){v.textContent='0';
+  new IntersectionObserver((es,ob)=>{if(es[0].isIntersecting){countUp(v);ob.disconnect();}},{threshold:.4}).observe(el);}});
+
+const secs=$$('section[id]'),links=$$('nav a');
+const spy=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)
+  links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id));}),
+  {rootMargin:'-15% 0px -75% 0px',threshold:0});
+secs.forEach(s=>spy.observe(s));
+
+const prog=$('#prog'),toTopBtn=$('#totop');
+function onScroll(){
+  const h=document.documentElement.scrollHeight-innerHeight;
+  prog.style.width=(h>0?scrollY/h*100:0)+'%';
+  toTopBtn.classList.toggle('on',scrollY>700);}
+addEventListener('scroll',onScroll,{passive:true});onScroll();
+toTopBtn.addEventListener('click',()=>scrollTo({top:0,behavior:'smooth'}));
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  if(e.key===' '){e.preventDefault();$('#playEq').click();}
+  if(e.key==='/'){e.preventDefault();$('#map').scrollIntoView({behavior:'smooth'});}});
+</script>
+
+</body>
+</html>

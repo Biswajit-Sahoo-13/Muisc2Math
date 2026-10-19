@@ -1,0 +1,43 @@
+{
+  "model_name": "math_chord_benchmark",
+  "sample_rate": 44100,
+  "duration": 2.0,
+  "components": [
+    {
+      "id": "partial_1",
+      "frequency": 440.0,
+      "amplitude": 0.4986945497445076,
+      "phase": 0.0,
+      "decay_rate": 1.1,
+      "envelope": {
+        "type": "exponential",
+        "a0": 0.4986945497445076,
+        "decay_rate": 1.1
+      }
+    },
+    {
+      "id": "partial_2",
+      "frequency": 554.365,
+      "amplitude": 0.29090515401762945,
+      "phase": 0.7853981633974483,
+      "decay_rate": 1.45,
+      "envelope": {
+        "type": "exponential",
+        "a0": 0.29090515401762945,
+        "decay_rate": 1.45
+      }
+    },
+    {
+      "id": "partial_3",
+      "frequency": 659.255,
+      "amplitude": 0.20778939572687818,
+      "phase": 1.5707963267948966,
+      "decay_rate": 1.8,
+      "envelope": {
+        "type": "exponential",
+        "a0": 0.20778939572687818,
+        "decay_rate": 1.8
+      }
+    }
+  ]
+}

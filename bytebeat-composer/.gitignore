@@ -1,0 +1,4 @@
+.htaccess
+build
+node_modules
+settings.php

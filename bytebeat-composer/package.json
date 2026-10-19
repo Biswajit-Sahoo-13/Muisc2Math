@@ -1,0 +1,37 @@
+{
+	"name": "bytebeat-composer",
+	"version": "0.4",
+	"author": "SthephanShi",
+	"description": "Bytebeat player with playlist that contains many interesting formulas from the Internet",
+	"homepage": "https://dollchan.net/bytebeat/",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SthephanShinkufag/bytebeat-composer.git"
+	},
+	"bugs": {
+		"url": "https://github.com/SthephanShinkufag/bytebeat-composer/issues"
+	},
+	"scripts": {
+		"start": "rollup -c"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.15.0",
+		"@rollup/plugin-node-resolve": "^15.3.0",
+		"@rollup/plugin-terser": "^0.4.4",
+		"eslint": "^9.15.0",
+		"globals": "^15.12.0",
+		"rollup": "^4.27.3"
+	},
+	"dependencies": {
+		"@codemirror/autocomplete": "^6.18.6",
+		"@codemirror/commands": "^6.8.1",
+		"@codemirror/lang-javascript": "^6.2.3",
+		"@codemirror/language": "^6.11.0",
+		"@codemirror/search": "^6.5.10",
+		"@codemirror/state": "^6.5.2",
+		"@codemirror/view": "^6.36.5",
+		"@lezer/highlight": "^1.2.1",
+		"pako": "^2.1.0"
+	}
+}

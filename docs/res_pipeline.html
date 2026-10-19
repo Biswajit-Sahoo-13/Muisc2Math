@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RES — Reverse Engineer a Song · pipeline</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#11161f; --panel2:#0e131c; --line:#1e2633;
+    --txt:#cbd5e1; --dim:#7d8ba1; --cyan:#22d3ee; --green:#34d399;
+    --amber:#fbbf24; --red:#f87171; --violet:#a78bfa; --pink:#f472b6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  code,pre,.mono{font-family:ui-monospace,"Cascadia Code",Consolas,Menlo,monospace}
+  .wrap{max-width:1100px;margin:0 auto;padding:48px 24px 80px}
+  h1{font-size:34px;letter-spacing:.5px;color:#e8eef7}
+  h1 .accent{color:var(--cyan)}
+  .tag{color:var(--dim);margin-top:6px;font-size:15px}
+  .tag b{color:var(--green);font-weight:600}
+  section{margin-top:56px}
+  h2{font-size:19px;color:#e8eef7;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+  h2 .no{color:var(--cyan);font-family:ui-monospace,monospace;font-size:14px;
+        border:1px solid var(--line);border-radius:6px;padding:2px 8px;background:var(--panel)}
+  .sub{color:var(--dim);font-size:13.5px;margin-bottom:18px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+         padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+
+  /* ---------- hero loop diagram ---------- */
+  .loopbox{position:relative}
+  svg text{font-family:ui-monospace,monospace}
+  .stage{cursor:pointer}
+  .stage polygon{fill:var(--panel2);stroke:var(--line);stroke-width:1.5;transition:.2s}
+  .stage:hover polygon,.stage.on polygon{stroke:var(--stage,#22d3ee);
+        fill:#131b28;filter:drop-shadow(0 0 6px rgba(34,211,238,.25))}
+  .stage.t1{--stage:var(--cyan)} .stage.t2{--stage:var(--violet)}
+  .stage.t3{--stage:var(--amber)} .stage.t4{--stage:var(--green)}
+  .stage.t5{--stage:var(--pink)}
+  .stage text.tt{fill:#e8eef7;font-size:13px;font-weight:700;text-anchor:middle}
+  .stage text.ts{fill:var(--dim);font-size:10.5px;text-anchor:middle}
+  .pulse{stroke:var(--cyan);stroke-width:2;fill:none;stroke-dasharray:10 14;
+         animation:dash 1.2s linear infinite;opacity:.75}
+  @keyframes dash{to{stroke-dashoffset:-24}}
+  .detail{margin-top:16px;background:var(--panel2);border:1px solid var(--line);
+          border-radius:10px;padding:16px 18px;display:none;font-size:14px}
+  .detail.show{display:block}
+  .detail h3{font-size:14px;margin-bottom:6px}
+  .detail .m{color:var(--dim);font-size:12.5px;font-family:ui-monospace,monospace;
+             background:#0a0e15;border:1px solid var(--line);border-radius:6px;
+             padding:8px 10px;margin-top:8px;overflow-x:auto;white-space:pre}
+  .k{color:var(--cyan)} .g{color:var(--green)} .a{color:var(--amber)}
+  .v{color:var(--violet)} .p{color:var(--pink)} .r{color:var(--red)}
+
+  /* ---------- flow ---------- */
+  .flow{display:flex;flex-direction:column;gap:0}
+  .frow{display:grid;grid-template-columns:190px 1fr 260px;gap:14px;align-items:center;
+        padding:9px 0;border-bottom:1px dashed var(--line)}
+  .frow:last-child{border-bottom:0}
+  .fmod{font-family:ui-monospace,monospace;font-size:12.5px;color:#e8eef7;
+        background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+        padding:8px 10px}
+  .fmod small{display:block;color:var(--dim);font-size:10.5px}
+  .fdata{font-size:13px}
+  .fout{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--dim)}
+  .arrow{color:var(--cyan);text-align:center;font-size:15px}
+
+  /* ---------- stepper ---------- */
+  .bars{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+  .bar-row{display:grid;grid-template-columns:112px 1fr 68px;gap:10px;align-items:center}
+  .bar-row .lb{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--dim)}
+  .track{height:12px;background:#0a0e15;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .fill{height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#155e75,var(--cyan));
+        transition:width .7s cubic-bezier(.2,.7,.2,1)}
+  .fill.hot{background:linear-gradient(90deg,#065f46,var(--green))}
+  .val{font-family:ui-monospace,monospace;font-size:12px;color:#e8eef7}
+  .stepbar{display:flex;gap:10px;margin:16px 0 4px;flex-wrap:wrap;align-items:center}
+  button{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+         padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13.5px;transition:.15s}
+  button:hover{border-color:var(--cyan);color:var(--cyan)}
+  button.primary{background:linear-gradient(135deg,#0e7490,#06b6d4);border:0;color:#04121a;font-weight:700}
+  .statusline{font-family:ui-monospace,monospace;font-size:12.5px;color:var(--dim)}
+  .statusline b{color:var(--green)}
+  .itlog{margin-top:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+         padding:12px 14px;font-family:ui-monospace,monospace;font-size:12px;min-height:120px;
+         white-space:pre;overflow-x:auto;color:var(--dim)}
+  .itlog .add{color:var(--green)} .itlog .no{color:var(--red)}
+
+  /* ---------- equation anatomy ---------- */
+  .eq{font-family:ui-monospace,monospace;font-size:15px;color:#e8eef7;background:var(--panel2);
+      border:1px solid var(--line);border-radius:10px;padding:18px;overflow-x:auto;white-space:nowrap}
+  .eq t{cursor:help;border-bottom:1px dotted var(--dim)}
+  .eq t:hover{color:#fff}
+  .eq .eA{color:var(--green)} .eq .eL{color:var(--amber)} .eq .eT{color:var(--violet)}
+  .eq .eF{color:var(--cyan)} .eq .eP{color:var(--pink)} .eq .eW{color:var(--dim)}
+  .terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
+  .term{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  .term .tt2{font-family:ui-monospace,monospace;font-size:12px}
+  .term .dd{color:var(--dim);font-size:12px;margin-top:2px}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card h4{font-size:13px;color:var(--cyan);margin-bottom:6px;font-family:ui-monospace,monospace}
+  .card p{font-size:13px;color:var(--dim)}
+  .card p b{color:var(--txt)}
+  pre.cmd{background:#0a0e15;border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+          font-size:12.5px;overflow-x:auto;color:var(--dim)}
+  pre.cmd .c1{color:var(--green)} pre.cmd .c2{color:var(--dim)} pre.cmd .c3{color:var(--cyan)}
+  .metric-badges{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .badge{font-family:ui-monospace,monospace;font-size:11.5px;border:1px solid var(--line);
+         border-radius:999px;padding:3px 11px;color:var(--dim);background:var(--panel2)}
+  .badge b{color:#e8eef7}
+  footer{margin-top:60px;color:var(--dim);font-size:12px;border-top:1px solid var(--line);padding-top:18px}
+  a{color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="accent" style="font-family:ui-monospace,monospace">RES</span> — Reverse Engineer a Song</h1>
+    <p class="tag">An REA-style agent loop for audio: <b>tools gather evidence → a provider hypothesizes math equations → the synthesizer verifies → the ledger records every try.</b> Nothing is claimed without a measured score behind it.</p>
+  </header>
+
+  <!-- ============ 1. THE LOOP ============ -->
+  <section>
+    <h2><span class="no">01</span> The loop at a glance</h2>
+    <p class="sub">Five stages, repeated until the verification says stop. Click a stage to see what really happens inside (numbers below are from the real run on <span class="mono">Metre - Lost.mp3</span>).</p>
+    <div class="panel loopbox">
+      <svg viewBox="0 0 760 330" width="100%" style="max-width:820px;display:block;margin:0 auto">
+        <!-- pulse ring -->
+        <ellipse class="pulse" cx="380" cy="165" rx="300" ry="120"/>
+        <!-- stage nodes -->
+        <g class="stage t1" onclick="showStage(0)"><polygon points="380,38 480,70 380,102 280,70"/>
+          <text class="tt" x="380" y="66">EVIDENCE</text><text class="ts" x="380" y="85">build_evidence</text></g>
+        <g class="stage t2" onclick="showStage(1)"><polygon points="675,140 740,165 675,190 610,165"/>
+          <text class="tt" x="676" y="162">HYPOTHESIZE</text><text class="ts" x="676" y="181">provider edits</text></g>
+        <g class="stage t3" onclick="showStage(2)"><polygon points="520,240 590,267 520,294 450,267"/>
+          <text class="tt" x="520" y="264">RENDER</text><text class="ts" x="520" y="281">render_ledger</text></g>
+        <g class="stage t4" onclick="showStage(3)"><polygon points="240,240 310,267 240,294 170,267"/>
+          <text class="tt" x="240" y="264">VERIFY</text><text class="ts" x="240" y="281">compute_error_metrics</text></g>
+        <g class="stage t5" onclick="showStage(4)"><polygon points="85,140 20,165 85,190 150,165"/>
+          <text class="tt" x="84" y="162">LEDGER</text><text class="ts" x="84" y="181">accept / rollback</text></g>
+        <text x="380" y="322" text-anchor="middle" fill="#7d8ba1" font-size="11" font-family="ui-monospace,monospace">iterate until corr ≥ target, or budget spent</text>
+      </svg>
+      <div id="stages" class="detail"></div>
+    </div>
+  </section>
+
+  <!-- ============ 2. DATA FLOW ============ -->
+  <section>
+    <h2><span class="no">02</span> The harness — file by file</h2>
+    <p class="sub">What each module actually passes along.</p>
+    <div class="panel flow">
+      <div class="frow"><div class="fmod">song file<small>.mp3 / .wav</small></div><div class="fdata">resampled, mono, float32/64 via <span class="mono">load_audio</span></div><div class="fout"><span class="mono">y, sr</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">src/res_evidence.py<small>build_evidence · evidence_prompt</small></div><div class="fdata">SMS analysis in <b>2.5 s windows</b> → accepted partial equations + per-section metrics + tempo. Writes the versioned ledger <span class="mono">res/1.1</span></div><div class="fout"><span class="mono">res_evidence_initial.json</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">src/res_loop.py<small>run_loop · apply_edits · _section_update</small></div><div class="fdata"><b>Hypothesis provider</b>: numeric coordinate lifter (default) — or an LLM via <span class="mono">opencode run</span> / custom command / in-session edits. Malformed edits are silently dropped; the receipt is how many truly applied</div><div class="fout"><span class="mono">edits[] · render state</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">render_ledger<small>same file</small></div><div class="fdata">Every equation → samples: analytic <span class="mono">A·exp(−λ(t−t0))·cos(2πft−φ)</span>, glides integrated from smoothed trajectories, each pasted at its exact <span class="mono">start_sample</span> with the SMS support mask</div><div class="fout"><span class="mono">recon[n]</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">src/residual.py<small>compute_error_metrics</small></div><div class="fdata">The referee scores <b>against the original only</b>: correlation, SNR&nbsp;dB, log-spectral distance — never against itself</div><div class="fout"><span class="mono">g: corr / snr / lsd</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">accept gate<small>run_loop</small></div><div class="fdata">corr strictly improved → <b class="g">keep</b> + update best; else deepcopy <b class="r">rollback</b>. Every try is appended to the ledger with its before/after metrics</div><div class="fout"><span class="mono">iterations[]</span></div></div>
+      <div class="arrow">↓</div>
+      <div class="frow"><div class="fmod">outputs<small>data/output/res_*/</small></div><div class="fdata">checkpoint ledger · best reconstruction · final state · human-readable closed-form equations</div><div class="fout"><span class="mono">res_ledger.json · res_best.wav · res_final.wav · res_equations.txt</span></div></div>
+    </div>
+  </section>
+
+  <!-- ============ 3. STEPPER ============ -->
+  <section>
+    <h2><span class="no">03</span> Replay: a real 8-second loop run</h2>
+    <p class="sub">62 partials across 4 sections, straight from <span class="mono">data/output/res_mp3_v3/res_ledger.json</span>. Press play.</p>
+    <div class="panel">
+      <div class="metric-badges">
+        <span class="badge">source <b>Metre - Lost.mp3</b></span>
+        <span class="badge">sr <b>22050</b></span>
+        <span class="badge">window <b>2.5 s</b></span>
+        <span class="badge">sections <b>4</b></span>
+        <span class="badge">partials <b>62</b></span>
+        <span class="badge">start corr <b>0.7292</b></span>
+      </div>
+      <div class="stepbar">
+        <button class="primary" onclick="play()">▶ play</button>
+        <button onclick="step(1)">next iteration</button>
+        <button onclick="reset()">reset</button>
+        <span class="statusline" id="status">evidence built · corr <b>0.7292</b></span>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="itlog" id="itlog">$ waiting…</div>
+    </div>
+  </section>
+
+  <!-- ============ 4. ANATOMY ============ -->
+  <section>
+    <h2><span class="no">04</span> Anatomy of one equation we recovered</h2>
+    <p class="sub">From the ground-truth chord demo — the loop's refit recovered the true decays to three decimals. Hover the terms.</p>
+    <div class="panel">
+      <div class="eq">0.5776 <t class="eA" title="Amplitude A: envelope peak at anchor t0">· exp(−</t><t class="eL" title="Decay λ: springy exponential falloff">1.0995</t><t class="eT" title="t − t0: time relative to the fitted anchor">·(t − 0.0348))</t> <t class="eF" title="Frequency f: pitch in Hz">· cos(2π·440.000·t</t> <t class="eP" title="Phase φ: cosine alignment, referenced to the fitting section's time origin">− 1.571)</t></div>
+      <div class="terms">
+        <div class="term"><div class="tt2"><span class="g">A = 0.5776</span></div><div class="dd">envelope peak amplitude at t₀ — projected, not assumed</div></div>
+        <div class="term"><div class="tt2"><span class="a">λ = 1.0995</span></div><div class="dd">decay rate · s⁻¹. true value 1.10 — recovered by grid sweep + verification</div></div>
+        <div class="term"><div class="tt2"><span class="v">t₀ = 0.0348 s</span></div><div class="dd">envelope anchor; attack ramps backward one STFT half-window from here</div></div>
+        <div class="term"><div class="tt2"><span class="k">f = 440.000 Hz</span></div><div class="dd">pitch. refined by residual minimisation (±2 Hz band)</div></div>
+        <div class="term"><div class="tt2"><span class="p">φ = 1.571 rad</span></div><div class="dd">phase recovered by two-column least-squares projection</div></div>
+        <div class="term"><div class="tt2">support: <span class="k">[1.115, 1.126] s</span></div><div class="dd">measured window: ramp back → hold → decay-fade. nothing rings forever</div></div>
+      </div>
+      <div class="metric-badges">
+        <span class="badge">ground truth <b>440 / 554.365 / 659.255 Hz</b></span>
+        <span class="badge">λ recovered <b>1.0995 / 1.4489 / 1.7969</b> (true 1.10 / 1.45 / 1.80)</span>
+        <span class="badge">result <b>corr 0.999966 · SNR 41.6 dB</b></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. INVARIANTS ============ -->
+  <section>
+    <h2><span class="no">05</span> What makes it trustworthy</h2>
+    <div class="cards">
+      <div class="card"><h4>measured, never assumed</h4><p>Every claim in the ledger sits next to <b>corr / SNR / LSD</b> computed against the original audio. The file's untouched remainder is never compared — extra silence would fabricate a collapse.</p></div>
+      <div class="card"><h4>strict-improvement acceptance</h4><p>Each candidate edit (reprojection, decay sweep, frequency shift, drop) is accepted only when the section residual strictly decreases — <b>section corr can never get worse</b>.</p></div>
+      <div class="card"><h4>rollback, not hope</h4><p>An iteration that fails verification is rolled back from a snapshot. The best state is tracked separately; <b>bad hypotheses cost nothing</b> but a ledger entry.</p></div>
+      <div class="card"><h4>support masks</h4><p>Partials are windowed exactly like the SMS engine: attack reaches back one analysis window, hold follows the fitted decay, release fades 0.25 s. <b>No infinite ringing.</b></p></div>
+      <div class="card"><h4>honest equations</h4><p><span class="mono">amplitude</span> is the fitted coefficient, expansions are stable, edits are typed (refit_amplitude / refit_phase / set_decay / set_frequency_offset / drop) — the provider can't invent a channel it wasn't given.</p></div>
+      <div class="card"><h4>replayable history</h4><p>Each checkpoint rewrites <span class="mono">res_ledger.json</span>, so an agent (or you) can <b>stop mid-loop and inspect</b> the full hypothesis trail.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 6. RUN IT ============ -->
+  <section>
+    <h2><span class="no">06</span> Run it yourself</h2>
+    <div class="grid2">
+      <div>
+        <pre class="cmd"><span class="c2"># numeric provider — the deterministic loop</span>
+python main.py res -i <span class="c1">"Metre - Lost.mp3"</span> <span class="c2">\</span>
+       -o data/output/res_mp3 -d 8 <span class="c2">\</span>
+       --iterations 4
+
+<span class="c2"># with an LLM provider (opencode run)</span>
+python main.py res -i <span class="c1">"song.mp3"</span> <span class="c2">\</span>
+       --provider opencode --llm-model <span class="c3">provider/model</span> <span class="c2">\</span>
+       --iterations 6 --target-corr 0.98
+
+<span class="c2"># machine-readable summary</span>
+... --json</pre>
+      </div>
+      <div>
+        <pre class="cmd"><span class="c2"># in-session agent usage (Antigravity — cannot run
+# headlessly, so drive the tools directly)</span>
+from src.res_evidence import build_evidence, evidence_prompt
+from src.res_loop import run_loop, apply_edits
+
+ledger = build_evidence(<span class="c3">"song.mp3"</span>, <span class="c3">"out"</span>)
+prompt = evidence_prompt(ledger)   <span class="c2"># read it, plan edits</span>
+ledger = run_loop(ledger, <span class="c3">"song.mp3"</span>, <span class="c3">"out"</span>,
+                 iterations=4, target_corr=0.98)
+print(ledger[<span class="c3">"best"</span>], ledger[<span class="c3">"iterations"</span>])</pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    RES v2.1 · evidence schema <span class="mono">res/1.1</span> (hypothesis bank: classes A/B/C, Klapuri cancellation, transient bundles) · referee: corr + SNR + LSD + segmental SNR + onset corr · numbers embedded from the 2026-10-17 run of
+    <span class="mono">python main.py res -i "Metre - Lost.mp3" -d 8 --iterations 4</span> —
+    ledger at <span class="mono">data/output/res_mp3_v3/res_ledger.json</span>. Companion engine: SMS (<span class="mono">src/sinusoidal_model.py</span>), referee: <span class="mono">src/residual.py</span>.
+  </footer>
+</div>
+
+<script>
+/* ---------- embedded measured data (real run, res_ledger.json) ---------- */
+const RES = {
+  start: {corr: 0.729191, snr: 3.29,
+          sections: [0.891315, 0.711159, 0.672352, 0.643752], partials: 62},
+  iterations: [
+    {corr: 0.756046, snr: 3.681, lsd: 4.190, accepted: true, providers: "numeric+bank",
+     sections: [0.893782, 0.742379, 0.700459, 0.715435], onset: 0.265},
+    {corr: 0.769659, snr: 3.897, lsd: 4.084, accepted: true, providers: "numeric+bank",
+     sections: [0.894786, 0.759417, 0.708307, 0.800931], onset: 0.275},
+    {corr: 0.785950, snr: 4.176, lsd: 3.989, accepted: true, providers: "numeric+bank",
+     sections: [0.894958, 0.782331, 0.716503, 0.845836], onset: 0.384},
+    {corr: 0.804284, snr: 4.518, lsd: 3.955, accepted: true, providers: "numeric+bank",
+     sections: [0.895005, 0.810846, 0.721643, 0.871944], onset: 0.442},
+  ],
+};
+const STAGES = [
+  {t:"EVIDENCE — build_evidence", c:"var(--cyan)", h:`The song is loaded and analysed by the SMS engine in <b>2.5&nbsp;s windows</b>. Partial spikes → tracks → fitted coefficients <span class="mono">(frequency, projection_gain, envelope_a0/decay/t0, phase, start/end)</span>. Output is a versioned JSON ledger: one section per window, each holding its partial equations and its measured corr/SNR/LSD against the original — so any agent can see exactly which sections are under-described.`,
+   m:`y, sr = load_audio(song)
+r = sinusoidal_reconstruction(y, sr, window_s=2.5)
+sections[i] = {start, start_sample, partials[],
+               metrics: {corr, snr_db, lsd}}
+ledger = {schema:"res/1.1", sections[], best, iterations[]}`},
+  {t:"HYPOTHESIZE — provider edits + hypothesis bank", c:"var(--violet)", h:`<b>Class A</b> (verified v1): a greedy coordinate <i>lifter</i> — per partial it sweeps λ∈{0.5…2}×, projects (A,φ) on a masked cosine/sine basis, refines f by residual minimisation, and may drop the partial — every candidate accepted only on strict section-<b>correlation</b> improvement (the VERIFY metric itself, not raw energy). <b>Class B</b> (v2 bank): whole notes at <span class="mono">f_m = m·F0·√(1+B·m²)</span> (inharmonicity, Valette–Cuesta damping <span class="mono">σ_m = a + b·f_m</span>), nominated from the residual by Klapuri-style harmonic summation with 1/m weights — <i>and</i> an even-harmonic voicing veto that rejects subharmonic phantoms, plus iterative estimation–cancellation so a second instrument stops hiding inside the first one's harmonic comb. <b>Class C</b> (v2.1, transients): Bello spectral-flux onsets raise hits; each hit is explained by a bundle of fast-decay damped modes picked from the onset <i>difference spectrum</i> (attack minus pre-hit window) and fitted with sequential deflation — a hit is a set of quickly-dying modes, so no new render machinery is added; the same dual gate critiques it. <b>opencode</b>: an LLM shells in headlessly and returns typed JSON edits (refit_amplitude / refit_phase / set_decay / set_frequency_offset / drop). <b>in-session</b>: you call <span class="mono">apply_edits()</span> yourself. Every candidate — accepted or rejected — is recorded under <span class="mono">section["hypothesis_bank"]</span>.`,
+   m:`edits = [{"section":1,"id":"part_013","op":"set_decay","value":2.5}]
+f0s = harmonic_sum(residual)   # k candidates, vetoed, cancelled
+notes = [f_m = m*f0*sqrt(1+B*m^2)]            # class B
+hits  = bundle(onset_diff_spectrum, decay≤200)# class C
+apply_edits(ledger, edits) -> n_applied`},
+  {t:"RENDER — render_ledger", c:"var(--amber)", h:`Pure math → audio. Constants close-form as <span class="mono">A·exp(−λ(t−t₀))·cos(2πft − φ)</span>; glides integrate their median-smoothed frequency trajectory exactly like the SMS engine did (phase referenced to the section's own time origin). Every partial is pasted at its exact <span class="mono">start_sample</span> behind the SMS support mask — attack ramp backward, hold by fitted decay, 0.25 s fade. No part of the render may ring beyond its measured support.`,
+   m:`sig = env·cos(2πf·t_fit − φ) · support_mask
+out[w_start:end] += section render`},
+  {t:"VERIFY — compute_error_metrics", c:"var(--green)", h:`The referee compares reconstruction against the <b>original</b> only, on exactly the analysed span (the untouched remainder of the file is excluded — extra silence would fabricate a fake collapse). Global corr is the loop's decision metric; SNR and log-spectral distance ride along into the ledger as receipts, and v2.1 adds two honesty channels: <b>segmental SNR</b> (frame-wise SNR over active frames — catches energy-bloated renders corr alone forgives) and <b>onset correlation</b> (does the render strike when the target strikes — the transient referee).`,
+   m:`g = {correlation, snr_db, log_spectral_distance_db,
+     seg_snr_db, onset_corr}        # v2.1 referee set
+accepted = g.corr > best.corr + 1e-9`},
+  {t:"LEDGER — accept or rollback", c:"var(--pink)", h:`Accepted iterations update the best state (deep-copied); rejected ones restore it — a bad hypothesis costs one ledger entry, nothing else. Every try is appended with provider, edit count, and before/after metrics, and the checkpoint file is rewritten so the trail survives process death. Looping stops at <span class="mono">--target-corr</span> or budget.`,
+   m:`it = {iteration, provider, llm_edits_applied,
+     accepted, global: {corr, snr, lsd}}
+if not accepted: sections = deepcopy(best_sections)`},
+];
+
+/* ---------- stage viewer ---------- */
+let curStage = -1;
+function showStage(i){
+  const el = document.getElementById('stages');
+  document.querySelectorAll('.stage').forEach((s,j)=>s.classList.toggle('on', j===i));
+  if (curStage === i){ el.classList.remove('show'); curStage = -1; return; }
+  curStage = i;
+  const s = STAGES[i];
+  el.innerHTML = `<h3 style="color:${s.c}">${s.t}</h3>${s.h}<div class="m">${escapeHtml(s.m)}</div>`;
+  el.classList.add('show');
+}
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+/* ---------- iteration stepper ---------- */
+const SECTIONS = ["section 0", "section 1", "section 2", "section 3"];
+let barEls = [], curIt = 0, timer = null;
+function buildBars(){
+  const box = document.getElementById('bars'); box.innerHTML = '';
+  barEls = [];
+  const rows = [...SECTIONS.map((s,i)=>({lb:s, v: RES.start.sections[i], hot:false})), {lb:"global", v: RES.start.corr, hot:true}];
+  rows.forEach(r=>{
+    const d = document.createElement('div'); d.className='bar-row';
+    d.innerHTML = `<div class="lb">${r.lb}</div>
+      <div class="track"><div class="fill${r.hot?' hot':''}" data-hot="${r.hot?'1':'0'}"></div></div>
+      <div class="val"></div>`;
+    box.appendChild(d);
+    barEls.push({fill: d.querySelector('.fill'), val: d.querySelector('.val'), hot:r.hot});
+  });
+  paint(); setStatus();
+}
+function paint(){
+  barEls.forEach((b,i)=>{
+    const v = b.hot ? curGlobal() : curSections()[i];
+    b.fill.style.width = Math.max(0, Math.min(100, v*100)) + '%';
+    b.val.textContent = v.toFixed(4);
+    b.fill.classList.toggle('hot', b.hot);
+  });
+}
+function curSections(){
+  if (curIt === 0) return RES.start.sections;
+  return RES.iterations[curIt-1].sections;
+}
+function curGlobal(){
+  return curIt === 0 ? RES.start.corr : RES.iterations[curIt-1].corr;
+}
+function setStatus(){
+  const st = document.getElementById('status');
+  if (curIt === 0) st.innerHTML = `evidence built · corr <b>${RES.start.corr.toFixed(4)}</b> (SMS engine fit)`;
+  else {
+    const it = RES.iterations[curIt-1];
+    st.innerHTML = `iteration ${curIt} [${it.providers}] · corr <b>${it.corr.toFixed(4)}</b> · snr <b>${it.snr} dB</b> · lsd <b>${it.lsd} dB</b> · onset <b>${(it.onset||0).toFixed(3)}</b>`;
+  }
+  const log = document.getElementById('itlog');
+  let lines = [`$ res loop — 62 partials / 4 sections · target corr 0.98`, ``];
+  lines.push(`  evidence: corr=${RES.start.corr.toFixed(6)}` + (curIt>0? '' : '   ▸'));
+  let best = RES.start.corr;
+  for (let i=0; i<curIt; i++){
+    const it = RES.iterations[i];
+    const better = it.corr > best;
+    if (better) best = it.corr;
+    lines.push(`  iter ${i+1}: [${it.providers}] corr=${it.corr.toFixed(4)} snr=${it.snr.toFixed(2)}dB lsd=${it.lsd.toFixed(1)}dB onset=${(it.onset||0).toFixed(2)} -> ${better?'accepted':'rejected (no improvement)'}${i===curIt-1?'   ▸':''}`);
+  }
+  log.innerHTML = lines.map(escapeHtml).join('\n').replace(/accepted/g,'<span class="add">accepted</span>').replace(/rejected/g,'<span class="no">rejected</span>').replace(/▸/g,'<span style="color:var(--cyan)">▸</span>');
+}
+function step(n){
+  curIt = Math.max(0, Math.min(RES.iterations.length, curIt + n));
+  paint(); setStatus();
+}
+function play(){
+  reset();
+  timer = setInterval(()=>{
+    if (curIt >= RES.iterations.length){ clearInterval(timer); timer=null; return; }
+    step(1);
+  }, 1300);
+}
+function reset(){
+  if (timer){ clearInterval(timer); timer = null; }
+  curIt = 0; buildBars();
+}
+buildBars();
+</script>
+</body>
+</html>

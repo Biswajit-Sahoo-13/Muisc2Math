@@ -1,0 +1,41 @@
+{
+  "default": "bytebeat_full",
+  "songs": [
+    {
+      "id": "bytebeat_full",
+      "file": "bytebeat_full.js",
+      "mode": 3,
+      "modeName": "Funcbeat",
+      "rate": 22050,
+      "bytes": 78553,
+      "corr": 0.999947
+    },
+    {
+      "id": "bytebeat_float",
+      "file": "bytebeat_float.js",
+      "mode": 2,
+      "modeName": "Floatbeat",
+      "rate": 48000,
+      "bytes": 149093,
+      "corr": 0.999947
+    },
+    {
+      "id": "bytebeat",
+      "file": "bytebeat.js",
+      "mode": 3,
+      "modeName": "Funcbeat",
+      "rate": 22050,
+      "bytes": 41102,
+      "corr": 0.999945
+    },
+    {
+      "id": "bytebeat_light",
+      "file": "bytebeat_light.js",
+      "mode": 3,
+      "modeName": "Funcbeat",
+      "rate": 22050,
+      "bytes": 27777,
+      "corr": 0.999943
+    }
+  ]
+}

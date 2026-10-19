@@ -1,0 +1,63 @@
+{
+  "model_name": "math_melody_benchmark",
+  "sample_rate": 44100,
+  "duration": 2.0,
+  "components": [
+    {
+      "id": "note_1",
+      "start_time": 0.0,
+      "duration": 1.0,
+      "frequency": 440.0,
+      "amplitude": 0.5,
+      "phase": 0.0,
+      "vibrato": {
+        "frequency": 5.0,
+        "depth": 4.0
+      },
+      "envelope": {
+        "type": "adsr",
+        "attack": 0.05,
+        "decay": 0.1,
+        "sustain": 0.8,
+        "release": 0.15
+      }
+    },
+    {
+      "id": "note_2",
+      "start_time": 1.0,
+      "duration": 1.0,
+      "frequency": 523.25,
+      "amplitude": 0.5,
+      "phase": 0.0,
+      "vibrato": {
+        "frequency": 6.0,
+        "depth": 5.0
+      },
+      "envelope": {
+        "type": "adsr",
+        "attack": 0.05,
+        "decay": 0.1,
+        "sustain": 0.8,
+        "release": 0.15
+      }
+    },
+    {
+      "id": "note_3",
+      "start_time": 2.0,
+      "duration": 1.0,
+      "frequency": 659.25,
+      "amplitude": 0.5,
+      "phase": 0.0,
+      "pitch_bend": {
+        "target_frequency": 698.46
+      },
+      "envelope": {
+        "type": "adsr",
+        "attack": 0.05,
+        "decay": 0.1,
+        "sustain": 0.8,
+        "release": 0.15
+      }
+    }
+  ]
+}
