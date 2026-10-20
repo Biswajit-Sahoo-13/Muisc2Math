@@ -70,6 +70,21 @@ def save(data: Dict[str, Any], path: Optional[Path] = None) -> None:
 
 
 # ------------------------------------------------------------------- checks
+def _resolve(root: Path, rel: str) -> Path:
+    """Resolve a stored relative path on any platform.
+
+    Scoreboards written on Windows contain backslashes, which are a legal
+    filename character on POSIX and so do not resolve there. Normalise before
+    joining.
+    """
+    return Path(root) / Path(str(rel).replace("\\", "/"))
+
+
+def _posix(rel: str) -> str:
+    """Store a path the same way on every platform."""
+    return str(rel).replace("\\", "/")
+
+
 def max_accepted_correlation(ledger: Dict[str, Any]) -> Optional[float]:
     """Highest correlation among the iterations the loop actually accepted."""
     vals = []
@@ -124,7 +139,7 @@ def verify(root: Optional[Path] = None) -> Dict[str, Any]:
         label_improved = True
         details: List[Dict[str, Any]] = []
         for name, row in sorted(rows.items()):
-            p = root / row["ledger"]
+            p = _resolve(root, row["ledger"])
             if not p.exists():
                 consistent = False
                 label_consistent = False
@@ -211,7 +226,7 @@ def run_label(
             "fixture": name, "status": "ok" if proc.returncode == 0 else "failed",
             "label": label, "source": rel, "command": " ".join(cmd),
             "seconds": elapsed, "returncode": proc.returncode,
-            "ledger": str(led.relative_to(root)) if led.exists() else None,
+            "ledger": _posix(str(led.relative_to(root))) if led.exists() else None,
         }
         if not led.exists():
             row["error"] = ((proc.stdout or "")[-1500:] + "\n"

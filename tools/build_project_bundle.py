@@ -6,7 +6,7 @@ project shape, the measured numbers and the file index.
 """
 from pathlib import Path
 
-ROOT = Path(r"C:\Users\KIIT\Desktop\Audio Maker")
+ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "PROJECT_BUNDLE.md"
 
 FILES = [

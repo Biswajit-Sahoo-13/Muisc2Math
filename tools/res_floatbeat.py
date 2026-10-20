@@ -156,7 +156,7 @@ def _check(ledger: dict, args, text: str):
     dur = float(ledger.get("duration") or 15.0)
     keep, _, hw = collect(ledger, args.ratio)
     sim = simulate_exported(keep, hw, sr, dur).astype(np.float32)
-    tmp = Path(tempfile.mkdtemp(prefix="fbchk_", dir=r"C:\Users\KIIT\AppData\Local\Temp\opencode"))
+    tmp = Path(tempfile.mkdtemp(prefix="fbchk_"))
     sim_path = tmp / "sim.f32"
     code_path = tmp / "code.js"  # checker runs on the 22050 grid for exact parity
     checked = text.replace(f"T=t/{args.sample_rate}", f"T=t/{sr}", 1)

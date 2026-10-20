@@ -11,6 +11,7 @@ Features:
 import sys
 import io
 import json
+import os
 import time
 import wave
 from pathlib import Path
@@ -626,12 +627,13 @@ with tab_bench:
         st.success("VERDICT: OK" if _res["ok"] else "VERDICT: FAIL")
 
     with st.expander("Reproduce a label from the command line"):
+        _py = ".venv\\Scripts\\python.exe" if os.name == "nt" else ".venv/bin/python"
         st.code(
-            ".venv\\Scripts\\python.exe main.py res "
+            f"{_py} main.py res "
             "-i data/output/_fixtures/stem_drums.wav "
             "-o data/output/_scoreboard/after/stem_drums "
             "-d 10 --iterations 6\n\n"
-            ".venv\\Scripts\\python.exe tools\\verify_scoreboard.py",
+            f"{_py} tools/verify_scoreboard.py",
             language="text",
         )
 
