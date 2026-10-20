@@ -21,20 +21,19 @@
   - [2. Polyphonic Peak Tracking vs Argmax Collapse](#2-polyphonic-peak-tracking-vs-argmax-collapse)
   - [3. 3-Tier Formula Architecture](#3-3-tier-formula-architecture)
 - [Equation Discovery Engine](#equation-discovery-engine)
-  - [Beam Search and Complexity-Aware Selection](#beam-search-and-complexity-aware-selection)
   - [Benchmark Partial Recovery Results](#benchmark-partial-recovery-results)
 - [High-Fidelity Reconstruction: Sinusoidal Modeling Synthesis](#high-fidelity-reconstruction-sinusoidal-modeling-synthesis)
-  - [Formulation and Sines+Noise Decomposition](#formulation-and-sinesnoise-decomposition)
   - [Measured Benchmarks and Correction Values](#measured-benchmarks-and-correction-values)
-  - [Deterministic Full-Mix Physical Limits](#deterministic-full-mix-physical-limits)
+  - [Measured Limits (not projections)](#measured-limits-not-projections)
 - [Closed-Loop Error Correction and Alignment](#closed-loop-error-correction-and-alignment)
   - [Multi-Stage Alignment Pipeline](#multi-stage-alignment-pipeline)
   - [Energy Guard and Objective Function Constraints](#energy-guard-and-objective-function-constraints)
 - [Reverse Engineering and Synthesis (RES) Engine](#reverse-engineering-and-synthesis-res-engine)
 - [Quickstart Guide](#quickstart-guide)
-  - [1. Interactive Web DAW Studio](#1-interactive-web-daw-studio)
-  - [2. CLI Execution Examples](#2-cli-execution-examples)
-  - [3. Running Unit Tests](#3-running-unit-tests)
+  - [1. Interactive Web Studio](#1-interactive-web-studio)
+  - [2. Sample tests and provenance](#2-sample-tests-and-provenance)
+  - [3. CLI Execution Examples](#3-cli-execution-examples)
+  - [4. Running Unit Tests](#4-running-unit-tests)
 - [Complete CLI Command Reference](#complete-cli-command-reference)
 - [Project Directory Architecture](#project-directory-architecture)
 - [License and Attribution](#license-and-attribution)
@@ -189,6 +188,7 @@ Every figure below is measured by `tools/bottleneck_scoreboard.py` on a frozen f
 - **Separated stems (native DSP partition of *j-hope - MONA LISA*, 10 s):** vocals **0.7535**, other **0.7376**, bass **0.6160**, drums **0.4107**. Tonal stems land in the 0.62–0.76 band.
 - **Percussion is the hard case.** A drum stem reconstructs at **0.4107 correlation / LSD 18.04 dB**: a kick, a snare and a hi-hat are not sums of sinusoids, and even at 12 hits per section the percussive class can only afford 6 modes per hit. This is a modelling limit, not a renderer limit.
 - **The renderer/analyser replica invariant is now enforced by test.** `tests/test_res_replica.py` compares the analyser's own output against the RES render of the *same* fitted parameters — the only comparison that can detect a replica gap, since the loop overwrites each section's recorded metric with the RES renderer's own score. `tests/test_res_phase_origin.py` pins the phase re-referencing law and the section-assignment rule.
+- **Where the +0.8437 recovery came from, measured.** Reverting one file at a time to the release commit attributes it to the phase re-referencing in `src/res_evidence.py`, not to the acceptance gate. The class-C gate is worth **+0.0341** on the full mix and is **negative (−0.0087) on the drum stem**; the remaining **+0.8095** is the phase-origin fix. The `baseline_head` and `bisected_d2` labels exist so both claims stay checkable.
 
 ---
 
@@ -236,21 +236,63 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 
 ## Quickstart Guide
 
-### 1. Interactive Web DAW Studio
+### 1. Interactive Web Studio
 
-Launch the full Streamlit interface:
+Launch the Streamlit interface:
 
 ```bash
-streamlit run app.py
+.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Features available in the studio:
-- **RES Engine Studio:** Upload any audio file, execute the iterative equation synthesis loop, and inspect Original vs Recreated vs Residual tracks.
-- **Interactive Formula Explorer:** Real-time parameter manipulation ($f_0$, amplitude, decay $\lambda$, timbre modulation) with live Fourier spectrum rendering.
-- **Spectrogram Math Inspector:** Side-by-side comparative views of CQT, STFT, and Reassigned Spectrograms.
-- **Bytebeat Player:** Live embedded code execution supporting standard dollchan-compatible share links.
+Then open <http://localhost:8501>.
 
-### 2. CLI Execution Examples
+The app has two tabs, both of which are the product itself rather than a toolbox:
+
+- **RES: Song → Equations → Replay** — upload any audio file, run the iterative equation synthesis loop, and compare Original vs Recreated vs Residual. The right-hand panel streams the run stage by stage (prepare → evidence → loop → package) with live correlation, SNR and LSD, so a multi-minute run is never a black box. The per-section equations are browsable in a dropdown, and the whole song plays back in the page.
+- **Benchmarks: sample tests** — the frozen-fixture harness (§ *Sample tests and provenance* below). Press **Run sample test** to start a label in the background; the recorded labels, their correlations and the verification verdict are all rendered in the page.
+
+### 2. Sample tests and provenance
+
+A **label** is one named run of the engine over the frozen fixture set; a **row** is one fixture inside it. Both live in `data/output/scoreboard.json` next to the ledger that produced them, so every published number is a pointer to a file rather than a claim.
+
+Run the harness from the browser (**Benchmarks** tab), or from the command line:
+
+```bash
+.venv\Scripts\python.exe tools\bottleneck_scoreboard.py --label after
+.venv\Scripts\python.exe tools\verify_scoreboard.py
+```
+
+The verifier returns two verdicts that are deliberately not conflated:
+
+| verdict | meaning |
+|---|---|
+| **consistent** | the row's numbers agree with the ledger it names (catches a stale ledger match under the same label) |
+| **improved** | the run beat its own initial render: `best >= initial_correlation`, and `best` is exactly the best accepted iteration |
+
+The second is the load-bearing one. A baseline whose gate could never fire records `best` *below* `initial` and matches no iteration at all — consistent with its own ledger, yet a shipped regression. A label may declare itself a captured regression via `expect_improvement` in `scoreboard.json`, so the baseline is reported without failing the tool, while **any other label that stops improving fails it**.
+
+Four labels ship, and all four are re-runnable from the tree:
+
+| label | provenance | mix_lost |
+|---|---|---|
+| `baseline_head` | the release commit re-run in-tree | 0.008146 |
+| `bisected_d2` | the current tree minus the class-C gate hunk | 0.817686 |
+| `after` | the current tree | 0.851825 |
+| `baseline` | the older captured baseline, kept for reference | 0.008146 |
+
+> **What the fix actually was.** The release's score collapsed because the SMS
+> analyser projects every partial against its *analysis window's* time axis
+> while the RES renderer draws it on the *section's* axis. When those origins
+> disagree, every partial is rotated by `2*pi*f*(origin difference)` — hundreds
+> of full cycles — so the reconstruction was uncorrelated even though every
+> partial was individually correct. `src/res_evidence.py::_rephase_to_section`
+> re-references the phase once, at build time.
+>
+> That is the whole of the +0.8437 recovery. The class-C acceptance gate
+> accounts for **+0.0341** of it (and is **negative** on `stem_drums`), so the
+> gate was never the main problem.
+
+### 3. CLI Execution Examples
 
 Execute the RES synthesis loop on an audio file:
 
@@ -282,7 +324,7 @@ Synthesize audio directly from an equation JSON project:
 python main.py synthesize -i equations.json -o data/output/rendered.wav
 ```
 
-### 3. Running Unit Tests
+### 4. Running Unit Tests
 
 Run the complete automated test suite (covering analysis, synthesis, formula banks, and tracking):
 
@@ -315,13 +357,15 @@ python -m unittest discover tests
 | `python main.py refine` | Performs closed-loop iterative residual minimization | Input WAV -> Corrected audio WAV |
 | `python main.py extract-notes` | Extracts note events using probabilistic pYIN tracking | Input WAV -> Note event list JSON |
 | `python main.py run-all` | Executes complete end-to-end benchmark and validation suite | System validation run |
+| `python tools\bottleneck_scoreboard.py --label NAME` | Runs the frozen-fixture harness and records a label in the scoreboard | Fixture set -> `scoreboard.json` + ledgers |
+| `python tools\verify_scoreboard.py` | Checks every scoreboard row against its ledger, and every label against its own initial render | `scoreboard.json` -> verdict |
 
 ---
 
 ## Project Directory Architecture
 
 ```text
-├── app.py                      # Interactive Streamlit Multi-Track Studio & Formula Explorer
+├── app.py                      # Streamlit app: RES reverse-engineering studio + benchmark harness
 ├── main.py                     # Unified CLI entry point
 ├── requirements.txt            # Python dependencies (numpy, scipy, librosa, soundfile, matplotlib, streamlit)
 ├── LICENSE                     # MIT Open Source License
@@ -348,6 +392,7 @@ python -m unittest discover tests
 │   ├── res_bank.py             # RES formula dictionary and candidate scoring
 │   ├── res_synthesis.py        # Hann OLA reconstruction and gated LPC noise synthesis
 │   ├── res_ui.py               # Streamlit UI components and playback controls
+│   ├── scoreboard.py           # Scoreboard format, row checks, label verification, harness runner
 │   ├── viral_math_reels.py     # Mathematical video animation and waveform visualization
 │   └── visualize.py            # Waveform, FFT spectrum, and comparison plotting utilities
 ├── tests/
@@ -365,6 +410,7 @@ python -m unittest discover tests
 │   ├── res_bytebeat.py         # Bytebeat formula conversion and audio generation utility
 │   ├── res_floatbeat.py        # Floatbeat synthesis and URL exporter
 │   ├── bottleneck_scoreboard.py # Frozen-fixture scoreboard: every claim is a row with a command and a ledger path
+│   ├── verify_scoreboard.py     # Verifies every scoreboard row against its ledger, and every label against its initial render
 │   ├── make_fixtures.py        # Regenerates the frozen fixture set (real separated stems)
 │   └── check_render_fidelity.py # Compares a saved ledger's metrics against a fresh render of its own partials
 ├── site/                       # Web-based Dollchan audio player and interactive demos
