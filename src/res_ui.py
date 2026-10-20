@@ -46,6 +46,12 @@ def _wav_bytes(y: np.ndarray, sr: int) -> bytes:
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _JOBS_LOCK = threading.Lock()
 
+# Scoreboard runs live in their own registry: they are minutes-long batch jobs
+# over the frozen fixture set, not a reconstruction of one upload, and the RES
+# tab must never see them.
+_SB_JOBS: Dict[str, Dict[str, Any]] = {}
+_SB_JOBS_LOCK = threading.Lock()
+
 
 def demucs_status() -> tuple[bool, str]:
     """Report whether real Demucs source separation is actually usable.
@@ -179,6 +185,71 @@ def done_job() -> Optional[Dict[str, Any]]:
         return next(
             (j for j in _JOBS.values()
              if j.get("state") == "done" and j.get("payload")),
+            None,
+        )
+
+
+# ------------------------------------------------------- scoreboard harness
+def _sb_worker(job: Dict[str, Any], label: str, fixtures, duration: float,
+               iterations: int, root: Path) -> None:
+    try:
+        from src.scoreboard import run_label
+
+        def _progress(done: int, total: int, name: str, corr) -> None:
+            job["done"] = done
+            job["total"] = total
+            job["fixture"] = name
+            job["corr"] = corr
+            job["stage"] = f"{done}/{total} {name}"
+
+        rows = run_label(label, fixtures=fixtures, duration=duration,
+                         iterations=iterations, root=root, progress=_progress)
+        job["rows"] = rows
+        job["state"] = "done"
+    except Exception as e:
+        job["state"] = "error"
+        job["error"] = f"{type(e).__name__}: {e}"
+
+
+def spawn_scoreboard_job(label: str, fixtures=None, duration: float = 10.0,
+                         iterations: int = 6,
+                         root: Optional[Path] = None) -> Dict[str, Any]:
+    """Start (or return the existing) background scoreboard run for ``label``."""
+    root = Path(root) if root is not None else Path(__file__).resolve().parent.parent
+    key = f"{label}:{duration}:{iterations}:{sorted(fixtures or [])}"
+    with _SB_JOBS_LOCK:
+        busy = [j for j in _SB_JOBS.values()
+                if j.get("state") in ("queued", "running")]
+        if busy:
+            return busy[0]
+        if key in _SB_JOBS and _SB_JOBS[key].get("state") != "error":
+            return _SB_JOBS[key]
+        _SB_JOBS.clear()
+        job: Dict[str, Any] = {
+            "state": "queued", "stage": "starting", "label": label,
+            "done": 0, "total": 0, "fixture": None, "corr": None,
+            "t0": time.monotonic(), "key": key,
+        }
+        _SB_JOBS[key] = job
+        threading.Thread(
+            target=_sb_worker,
+            args=(job, label, fixtures, duration, iterations, root),
+            daemon=True,
+        ).start()
+        return job
+
+
+def running_scoreboard_jobs() -> list:
+    with _SB_JOBS_LOCK:
+        return [j for j in _SB_JOBS.values()
+                if j.get("state") in ("queued", "running")]
+
+
+def done_scoreboard_job() -> Optional[Dict[str, Any]]:
+    with _SB_JOBS_LOCK:
+        return next(
+            (j for j in _SB_JOBS.values()
+             if j.get("state") in ("done", "error")),
             None,
         )
 

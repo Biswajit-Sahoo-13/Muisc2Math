@@ -43,8 +43,15 @@ def test_no_st_audio_call_passes_key():
     )
 
 
-def test_app_exposes_only_the_main_tab():
-    """The app is the product surface, not a toolbox."""
+PRODUCT_TABS = ["RES: Song -> Equations -> Replay", "Benchmarks: sample tests"]
+
+
+def test_app_exposes_only_the_main_tabs():
+    """The app is the product surface, not a toolbox.
+
+    Two tabs: the reverse-engineering surface, and the sample-test harness.
+    The results panel nests its own Original/Recreated/Residual set.
+    """
     labels = []
     for node in ast.walk(_tree()):
         if (isinstance(node, ast.Call)
@@ -56,14 +63,13 @@ def test_app_exposes_only_the_main_tab():
                 and isinstance(node.args[0], ast.List)):
             labels.append([e.value for e in node.args[0].elts])
     assert labels, "no st.tabs() call found"
-    # the top-level tab bar is the first one; the results panel may nest its own
-    assert labels[0] == ["RES: Song -> Equations -> Replay"], labels[0]
+    assert labels[0] == PRODUCT_TABS, labels[0]
     for extra in labels[1:]:
         assert extra == ["Original", "Recreated", "Residual"], extra
 
 
 def test_no_other_tab_blocks_exist():
-    """Only the RES tab may be entered with a `with tab_x:` block."""
+    """Only the product tabs may be entered with a `with tab_x:` block."""
     found = []
     for node in ast.walk(_tree()):
         if isinstance(node, ast.With):
@@ -71,7 +77,7 @@ def test_no_other_tab_blocks_exist():
                 if isinstance(item.context_expr, ast.Name) and \
                         item.context_expr.id.startswith("tab_"):
                     found.append(item.context_expr.id)
-    assert set(found) <= {"tab_res"}, f"extra tab blocks: {set(found)}"
+    assert set(found) <= {"tab_res", "tab_bench"}, f"extra tab blocks: {set(found)}"
 
 
 def test_no_math_daw_sidebar_remains():

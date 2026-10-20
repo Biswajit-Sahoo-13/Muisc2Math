@@ -516,8 +516,9 @@ def _equations_text(ledger: Dict[str, Any]) -> str:
         "# RES equation model - one closed-form equation per subtone",
         "# y(t)   = sum_s y_s(t - t_s)            (sum over section windows; t_s below)",
         "# y_s(x) = sum_k p_k(x)                  (x = t - t_s, section-local time)",
-        "# p(x)   = A * u(x - x0) * exp(-lam*(x - x0)) * cos(2*pi*f*x - phi)",
-        "#          u() = unit step (one-sided attack); support edges are windowed",
+        "# p(x)   = A * [u(x - x0) *] exp(-lam*(x - x0)) * cos(2*pi*f*x - phi)",
+        "#          u() is applied only to hypotheses that carry a one-sided",
+        "#          attack; fitted partials are windowed by the support mask.",
         f"# best global: corr={float(best.get('correlation', 0.0)):.6f} "
         f"snr={float(best.get('snr_db', 0.0)):.3f}dB "
         f"iterations={len(ledger.get('iterations', []))}",
@@ -572,9 +573,14 @@ def _equations_text(ledger: Dict[str, Any]) -> str:
         ph = float(p.get("phase", 0.0))
         tau = t0 - sec_start
         ph_txt = f"- {ph:.4f}" if ph >= 0.0 else f"+ {abs(ph):.4f}"
+        # The unit step is only real for hypotheses that carry `unit_step`;
+        # a fitted partial is windowed by the support mask instead. Printing
+        # u(x - x0) for every partial made the sheet describe an attack the
+        # renderer never applies.
+        step = "u(x - %.3f) * " % tau if p.get("unit_step") else ""
         return (
-            f"{tag}(x) = {a:.4f} * u(x - {tau:.3f}) "
-            f"* exp(-{lam:.4f}*(x - {tau:.3f})) "
+            f"{tag}(x) = {a:.4f} * {step}"
+            f"exp(-{lam:.4f}*(x - {tau:.3f})) "
             f"* cos(2*pi*{f:.4f}*x {ph_txt})"
             + sup
         )

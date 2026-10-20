@@ -72,6 +72,7 @@ Thumbs.db
 *.ogg
 *.opus
 AI-for-Engineers-*.md
+TRAVEL-HEAVY-ROLES-RESEARCH.md
 
 # Audio Maker pipeline output caches & transient uploads
 out_temp/

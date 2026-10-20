@@ -498,7 +498,142 @@ def _res_render_results(p: dict) -> None:
 # ---------------------------------------------------------------------------
 # Navigation Tabs
 # ---------------------------------------------------------------------------
-tab_res, = st.tabs(["RES: Song -> Equations -> Replay"])
+tab_res, tab_bench, = st.tabs([
+    "RES: Song -> Equations -> Replay",
+    "Benchmarks: sample tests",
+])
+
+# ===========================================================================
+# TAB 1: Benchmarks - the sample-test harness, run and read in the browser
+# ===========================================================================
+with tab_bench:
+    st.markdown(
+        f"### {svg_icon('flask')}Benchmarks - the sample-test harness",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "A *label* is one run of the engine over the frozen fixture set; a "
+        "*row* is one fixture inside it. Every label is re-runnable from the "
+        "command line - this tab is a view over `data/output/scoreboard.json` "
+        "plus a button that runs the same CLI in the background."
+    )
+
+    from src.scoreboard import FIXTURE_ORDER, FIXTURES, load, verify
+
+    b1, b2, b3 = st.columns([1, 1, 1.2])
+    with b1:
+        bench_label = st.text_input("Label name", value="after",
+                                    key="bench_label",
+                                    help="The name this run is stored under.")
+    with b2:
+        bench_dur = st.slider("Seconds analysed", 4.0, 30.0, 10.0, 1.0,
+                              key="bench_dur")
+    with b3:
+        bench_iters = st.slider("Iterations", 1, 8, 6, key="bench_iters")
+    bench_fixtures = st.multiselect("Fixtures", list(FIXTURES.keys()),
+                                    default=list(FIXTURE_ORDER),
+                                    key="bench_fixtures")
+
+    st.caption(
+        "This is a **harness**, not an executable: it drives the same "
+        "`main.py res` CLI you can type by hand, so any label here can be "
+        "reproduced outside the app. Each fixture takes 30-200 s, so the run "
+        "happens in the background."
+    )
+
+    run_pressed_b = st.button("Run sample test", type="primary",
+                               disabled=not bench_fixtures,
+                               key="bench_run_btn")
+
+    if run_pressed_b:
+        from src.res_ui import spawn_scoreboard_job
+        spawn_scoreboard_job(bench_label, fixtures=bench_fixtures,
+                             duration=bench_dur, iterations=bench_iters,
+                             root=Path(__file__).resolve().parent)
+        st.rerun()
+
+    from src.res_ui import done_scoreboard_job, running_scoreboard_jobs
+    _sb_running = running_scoreboard_jobs()
+    if _sb_running:
+        _job = _sb_running[0]
+        _bar = st.progress(0.0)
+        _ph = st.empty()
+        while _job.get("state") in ("queued", "running"):
+            _tot = max(1, int(_job.get("total") or 1))
+            _done_n = min(_tot, int(_job.get("done") or 0))
+            _bar.progress(_done_n / _tot)
+            _el = max(0.0, time.monotonic() - _job.get("t0", time.monotonic()))
+            _c = _job.get("corr")
+            _ph.write(
+                f"label **{_job.get('label')}** - {_job.get('stage')} "
+                f"· {_done_n}/{_tot} fixtures"
+                f"{f' · corr {_c:.4f}' if isinstance(_c, float) else ''}"
+                f" · {int(_el // 60)}m {int(_el % 60)}s elapsed"
+            )
+            time.sleep(1.0)
+        _bar.progress(1.0)
+        if _job.get("state") == "error":
+            st.error(f"sample test failed: {_job.get('error')}")
+        else:
+            st.success(f"label '{_job.get('label')}' written to the scoreboard")
+
+    _sb_done = done_scoreboard_job()
+    if _sb_done and _sb_done.get("state") == "error":
+        st.error(f"sample test failed: {_sb_done.get('error')}")
+
+    st.divider()
+    st.markdown("#### Recorded labels", unsafe_allow_html=True)
+    _sb = load()
+    _labels = sorted((_sb.get("labels") or {}).keys())
+    if not _labels:
+        st.info("No labels recorded yet - run one above.")
+    else:
+        _hdr = "".join(
+            f"<th style='text-align:right'>{n}</th>" for n in FIXTURE_ORDER)
+        _rows_html = ""
+        for _lbl in _labels:
+            _rows = (_sb["labels"][_lbl] or {})
+            _cells = ""
+            for _n in FIXTURE_ORDER:
+                _c = (_rows.get(_n) or {}).get("correlation")
+                _cells += (f"<td style='text-align:right'>{_c:.6f}</td>"
+                           if isinstance(_c, float) else "<td>-</td>")
+            _note = (_sb.get("expect_improvement") or {}).get(_lbl)
+            _tag = ("  <span style='color:#b91c1c'>captured regression</span>"
+                    if _note is False else "")
+            _rows_html += (f"<tr><td class='mono'>{_lbl}</td>{_cells}"
+                           f"<td style='color:#64748b'>{_note}</td></tr>")
+        st.markdown(
+            f"<table style='width:100%;border-collapse:collapse'>"
+            f"<tr><th style='text-align:left'>label</th>{_hdr}"
+            f"<th style='text-align:right'>expect improvement</th></tr>"
+            f"{_rows_html}</table>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("#### Verification", unsafe_allow_html=True)
+    _res = verify()
+    for _lbl, _v in sorted(_res["labels"].items()):
+        _cls = "ok" if _v["consistent"] else "INCONSISTENT"
+        _imp = "improved" if _v["improved"] else "did not improve"
+        if _v["expect_improvement"] is False:
+            _imp += " (expected: captured regression)"
+        st.caption(f"**{_lbl}** - consistent={_v['consistent']} · {_imp}")
+    if _res["unexpected_regressions"]:
+        st.error("UNEXPECTED REGRESSION (must improve): "
+                 + ", ".join(_res["unexpected_regressions"]))
+    else:
+        st.success("VERDICT: OK" if _res["ok"] else "VERDICT: FAIL")
+
+    with st.expander("Reproduce a label from the command line"):
+        st.code(
+            ".venv\\Scripts\\python.exe main.py res "
+            "-i data/output/_fixtures/stem_drums.wav "
+            "-o data/output/_scoreboard/after/stem_drums "
+            "-d 10 --iterations 6\n\n"
+            ".venv\\Scripts\\python.exe tools\\verify_scoreboard.py",
+            language="text",
+        )
 
 with tab_res:
     st.markdown(
