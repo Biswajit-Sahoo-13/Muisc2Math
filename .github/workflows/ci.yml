@@ -59,16 +59,30 @@ jobs:
       - name: Report the failure as a commit status
         if: failure()
         run: |
-          DESC=$(grep -E '^(FAILED|ERROR)' test-output.txt | head -8 \
-                 | sed 's/ - .*//' | tr '\n' ' ' | cut -c1-130)
-          echo "desc=$DESC" >> "$GITHUB_OUTPUT"
-          curl -s -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -d "{\"state\":\"failure\",\"description\":\"$DESC\",\"context\":\"pytest-${{ matrix.os }}\"}" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            > /dev/null
-          echo "::error::$DESC"
+          python - <<'PY'
+          import json, os, re, urllib.request
+          try:
+              text = open("test-output.txt", encoding="utf-8", errors="replace").read()
+          except OSError:
+              text = ""
+          fails = [l for l in text.splitlines() if l.startswith(("FAILED", "ERROR"))]
+          desc = " | ".join(re.sub(r" - .*", "", l) for l in fails[:6])[:130] \
+              or "pytest failed - see the artifact"
+          body = json.dumps({"state": "failure", "description": desc,
+                             "context": "pytest"}).encode()
+          req = urllib.request.Request(
+              "https://api.github.com/repos/%s/statuses/%s"
+              % (os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]),
+              data=body, method="POST",
+              headers={"Authorization": "token " + os.environ["GITHUB_TOKEN"],
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json"})
+          try:
+              urllib.request.urlopen(req, timeout=30).read()
+          except Exception as exc:
+              print("status post failed:", exc)
+          print("::error::" + desc)
+          PY
 
   python-versions:
     name: test ubuntu / py${{ matrix.python }}
