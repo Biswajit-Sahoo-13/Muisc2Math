@@ -99,3 +99,8 @@ data/output/*
 data/output/_scoreboard/**/*.wav
 data/output/_scoreboard/**/*.txt
 
+
+# Generated project bundle: a concatenation of tracked source, so it is
+# never itself tracked.
+PROJECT_BUNDLE.md
+PROJECT_BUNDLE.zip
