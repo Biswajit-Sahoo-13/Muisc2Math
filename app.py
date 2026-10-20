@@ -314,6 +314,40 @@ def _render_bytebeat_player(suffix: str = "") -> None:
     st.caption("Tip: switch presets or edit the code, then press Play. Nothing is uploaded anywhere.")
 
 
+def _estimate_seconds(dur: float, iters: int, stems: str, bank: bool) -> float:
+    """Estimated wall-clock for a RES run, from measurements on this machine.
+
+    Measured on an 8 s dense clip, no stem separation:
+        bank on : 2 iterations -> 18.3 s,  4 iterations -> 63.5 s
+        bank off: 2 iterations -> 12.2 s,  4 iterations -> 19.9 s
+    The cost grows super-linearly with iteration count (the bank proposes more
+    hypotheses each pass), so it is fitted as a power law rather than a guess.
+    Duration scales the fixed analysis cost linearly.
+    """
+    base, power = (18.3, 1.795) if bank else (12.2, 0.70)
+    total = base * (max(1, iters) / 2.0) ** power * (max(dur, 1.0) / 8.0)
+    if stems in ("auto", "demucs"):
+        total *= 3.5   # separation plus fitting each stem separately
+    return total
+
+
+def _audio_player(data: bytes, mime: str = "audio/wav", height: int = 54) -> None:
+    """Render an <audio> player that actually plays.
+
+    Streamlit's /media/ endpoint answers the browser's follow-up Range request
+    with 204 No Content, which Chromium reports as MEDIA_ERR_NETWORK -- the
+    track plays for ~0.4 s and then stops. A base64 data URI is not an HTTP
+    request at all, so there is no Range header and no 204 to trip over.
+    """
+    import base64
+    b64 = base64.b64encode(data).decode("ascii")
+    st.components.v1.html(
+        f'<audio controls style="width:100%;height:{height}px" '
+        f'src="data:{mime};base64,{b64}"></audio>',
+        height=height + 8,
+    )
+
+
 def _audio_to_bytes(y: np.ndarray, sr: int = 44100) -> bytes:
     """Convert float audio array into 16-bit PCM WAV bytes."""
     buf = io.BytesIO()
@@ -353,7 +387,7 @@ def _res_render_results(p: dict) -> None:
     st.markdown(f"#### {svg_icon('music')}1 - Listen", unsafe_allow_html=True)
     tabs = st.tabs(["Original", "Recreated", "Residual"])
     with tabs[0]:
-        st.audio(p["orig_bytes"], format="audio/wav")
+        _audio_player(p.get("orig_bytes") or b"", "audio/wav")
         st.caption(
             "The analysed span only (the slider length) - not the whole song."
         )
@@ -391,7 +425,7 @@ def _res_render_results(p: dict) -> None:
 
     with tabs[1]:
         if p["best_bytes"]:
-            st.audio(p["best_bytes"], format="audio/wav")
+            _audio_player(p.get("best_bytes") or b"", "audio/wav")
             st.caption(
                 f"evidence corr {p['start_corr']:.4f} -> best "
                 f"{b['correlation']:.4f} after the loop; every accepted and "
@@ -402,7 +436,7 @@ def _res_render_results(p: dict) -> None:
 
     with tabs[2]:
         if p.get("residual_bytes"):
-            st.audio(p["residual_bytes"], format="audio/wav")
+            _audio_player(p.get("residual_bytes") or b"", "audio/wav")
             st.caption(
                 "Original minus reconstruction. This is where the remaining "
                 "error lives: transients, noise floor and high-frequency air "
@@ -433,7 +467,7 @@ def _res_render_results(p: dict) -> None:
                 )
                 stem_wav = s_data.get("outputs", {}).get("wav")
                 if stem_wav and Path(stem_wav).exists():
-                    st.audio(Path(stem_wav).read_bytes(), format="audio/wav")
+                        _audio_player(Path(stem_wav).read_bytes(), "audio/wav")
 
     with st.expander("Iteration trail (accept / rollback receipts)"):
         st.dataframe(pd.DataFrame(p["trail"]), hide_index=True,
@@ -480,19 +514,46 @@ with tab_res:
             "Song (mp3 / wav / ogg / flac)",
             type=["mp3", "wav", "ogg", "flac", "m4a"], key="res_upload",
         )
+        # Play the upload from disk so the <audio> URL stays stable across
+        # re-renders (passing bytes makes Streamlit mint a new media file each
+        # time, and the browser then restarts playback from zero).
+        p_full_upload = None
         if up is not None:
-            st.audio(up.getvalue(), format=(up.type or "audio/wav"),
-                      )
+            import tempfile as _tf
+            _d = _tf.mkdtemp(prefix="res_upload_")
+            _f = Path(_d) / (Path(up.name).name or "upload.wav")
+            _f.write_bytes(up.getvalue())
+            p_full_upload = str(_f)
+            _audio_player(up.getvalue(), up.type or "audio/wav")
             st.caption(
                 "Your upload, in full. The reconstruction below covers only "
                 "the analysed span."
             )
+        # Preset first: it seeds the sliders below, so the cost of a run is
+        # never a guess. Timings are measured on this machine.
+        PRESETS = {
+            "Fast": (6.0, 2, True),
+            "Balanced": (8.0, 4, True),
+            "Quality": (15.0, 6, True),
+        }
+        res_preset = st.selectbox(
+            "Preset", list(PRESETS), index=1, key="res_preset",
+            help="Measured on this machine: Fast ~11 s, Balanced ~60 s, "
+                 "Quality ~3 min for a dense clip (no stem separation).",
+        )
+        if st.session_state.get("_res_preset_seen") != res_preset:
+            _d, _it, _bk = PRESETS[res_preset]
+            st.session_state["res_dur"] = _d
+            st.session_state["res_iters"] = _it
+            st.session_state["res_bank"] = _bk
+            st.session_state["_res_preset_seen"] = res_preset
+
         c1, c2 = st.columns(2)
         with c1:
             res_dur = st.slider("Analyse seconds", 4.0, 30.0, 8.0, 1.0,
                                 key="res_dur")
         with c2:
-            res_iters = st.slider("Iterations", 1, 8, 4, key="res_iters")
+            res_iters = st.slider("Iterations", 1, 6, 4, key="res_iters")
         c3, c4 = st.columns(2)
         with c3:
             res_stems = st.selectbox(
@@ -502,6 +563,21 @@ with tab_res:
             )
         with c4:
             res_bank = st.toggle("Hypothesis bank", value=True, key="res_bank")
+        c5, c6 = st.columns(2)
+        with c5:
+            res_noise = st.toggle(
+                "Noise model", value=False, key="res_noise",
+                help="Model the leftover residual with a stochastic class "
+                     "(LPC formant noise). A sum of sinusoids cannot express "
+                     "breath, air or sibilance, so that content is absent "
+                     "without it.",
+            )
+        with c6:
+            res_lane = st.toggle(
+                "Spectral lane", value=False, key="res_lane",
+                help="Let stochastic bursts be accepted on log-spectral "
+                     "distance instead of waveform correlation.",
+            )
 
         from src.res_ui import demucs_status
         demucs_ok, demucs_msg = demucs_status()
@@ -511,7 +587,7 @@ with tab_res:
             else:
                 st.warning("**Stem separation will silently degrade.** " + demucs_msg)
 
-        est = res_dur * (2.5 if res_stems == "none" else 12.0) * max(1, res_iters)
+        est = _estimate_seconds(res_dur, res_iters, res_stems, res_bank)
         run_pressed = st.button(
             "\u25b6 Recreate", type="primary", disabled=up is None,
             use_container_width=True, key="res_run_btn",
@@ -588,9 +664,10 @@ with tab_res:
     if run_pressed and up is not None:
         from src.res_ui import spawn_job
         key = (f"{up.name}:{up.size}:{round(res_dur)}:{res_iters}:{res_bank}"
-               f":{res_stems}")
+               f":{res_stems}:{res_noise}:{res_lane}")
         spawn_job(key, up.getvalue(), up.name, res_dur, res_iters, res_bank,
-                  root=Path(__file__).resolve().parent, stem_mode=res_stems)
+                  root=Path(__file__).resolve().parent, stem_mode=res_stems,
+                  enable_noise=res_noise, spectral_lane=res_lane)
         st.rerun()
 
     from src.res_ui import done_job as _done_job

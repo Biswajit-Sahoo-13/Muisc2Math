@@ -119,11 +119,14 @@ class StageTracker:
 
 def _res_worker(job: Dict[str, Any], blob: bytes, name: str, dur: float,
                 iters: int, bank: bool, root: Path,
-                stem_mode: str = "none") -> None:
+                stem_mode: str = "none",
+                enable_noise: bool = False,
+                spectral_lane: bool = False) -> None:
     try:
         payload = run_res_payload(
             blob, name, dur, iters, bank, root=root, progress=job,
-            stem_mode=stem_mode,
+            stem_mode=stem_mode, enable_noise=enable_noise,
+            spectral_lane=spectral_lane,
         )
         job["payload"] = payload
         job["state"] = "done"
@@ -133,7 +136,9 @@ def _res_worker(job: Dict[str, Any], blob: bytes, name: str, dur: float,
 
 
 def spawn_job(key: str, blob: bytes, name: str, dur: float, iters: int,
-              bank: bool, root: Path, stem_mode: str = "none") -> Dict[str, Any]:
+              bank: bool, root: Path, stem_mode: str = "none",
+              enable_noise: bool = False,
+              spectral_lane: bool = False) -> Dict[str, Any]:
     """Start (or return the existing) background RES job for ``key``."""
     with _JOBS_LOCK:
         busy = [
@@ -154,7 +159,8 @@ def spawn_job(key: str, blob: bytes, name: str, dur: float, iters: int,
         _JOBS[key] = job
         threading.Thread(
             target=_res_worker,
-            args=(job, blob, name, dur, iters, bank, root, stem_mode),
+            args=(job, blob, name, dur, iters, bank, root, stem_mode,
+                  enable_noise, spectral_lane),
             daemon=True,
         ).start()
         return job
@@ -204,6 +210,10 @@ def run_res_payload(
     root: Optional[Path] = None,
     progress: Optional[Dict[str, Any]] = None,
     stem_mode: str = "none",
+    enable_noise: bool = False,
+    spectral_lane: bool = False,
+    k_notes: int = 2,
+    k_hits: int = 12,
 ) -> Dict[str, Any]:
     """Analyze ``upload_bytes`` with the RES loop and collect display artifacts.
 
@@ -222,6 +232,10 @@ def run_res_payload(
     source separation via the stems pipeline). Demucs may be unavailable, in
     which case the engine falls back to an HPSS band split; the payload records
     which actually happened so the UI can say so.
+
+    ``enable_noise`` lets the hypothesis bank model the residual with a
+    stochastic class (LPC formant noise). A sum of sinusoids cannot express
+    breath, air or sibilance, so that content is absent without it.
     """
     from src.analysis import load_audio
     from src.res_evidence import build_evidence
@@ -306,6 +320,8 @@ def run_res_payload(
             str(saved), str(out_dir), stems_mode=stem_mode, sr=sr,
             max_duration=duration, window_s=window_s, iterations=iterations,
             target_corr=0.0, bank=bank, progress_fn=_prog if progress is not None else None,
+            enable_noise=enable_noise, spectral_lane=spectral_lane,
+            k_notes=k_notes, k_hits=k_hits,
         )
         stems_payload = multi.get("stems") or {}
         try:
@@ -325,6 +341,8 @@ def run_res_payload(
             ledger, str(saved), str(out_dir),
             iterations=iterations, target_corr=0.0, bank=bank,
             progress_fn=_prog if progress is not None else None,
+            enable_noise=enable_noise, spectral_lane=spectral_lane,
+            k_notes=k_notes, k_hits=k_hits,
         )
     if progress is not None:
         progress.update(stage="packaging", stage_pct=1.0,
@@ -337,6 +355,24 @@ def run_res_payload(
     orig_bytes = _wav_bytes(y[: min(span, y.size)], native_sr)
     best_path = Path(ledger["outputs"]["best_wav"])
     best_bytes = best_path.read_bytes() if best_path.exists() else b""
+
+    # Write the playable files to disk and expose *paths*, not bytes. Passing
+    # bytes to st.audio makes Streamlit mint a new media file on every render,
+    # so the browser reloads the <audio> element and restarts playback from
+    # zero. A stable file path keeps the same URL across re-renders.
+    play_dir = out_dir
+    play_dir.mkdir(parents=True, exist_ok=True)
+    orig_wav = play_dir / "res_original_span.wav"
+    orig_wav.write_bytes(orig_bytes)
+    best_wav_path = best_path if best_path.exists() else None
+    if best_wav_path is not None and not best_wav_path.is_absolute():
+        best_wav_path = (root_path / best_wav_path).resolve()
+    if best_wav_path is not None and not best_wav_path.exists():
+        best_wav_path = None
+    if best_wav_path is None:
+        best_wav_path = play_dir / "res_best.wav"
+        best_wav_path.write_bytes(best_bytes)
+    uploaded_wav = Path(saved).resolve()
 
     accepted = []
     for i, sec in enumerate(ledger["sections"]):
@@ -391,17 +427,20 @@ def run_res_payload(
 
     # Residual (error) signal: what the equations did NOT reproduce.
     residual_bytes = b""
+    residual_path = None
     if best_bytes and orig_bytes:
         try:
-            import io as _io
-            import wave as _wave
-            y_r, _ = load_audio(str(best_path), target_sr=None)
+            y_r, _ = load_audio(str(best_wav_path), target_sr=None)
             n_r = min(len(y_r), len(y[: min(span, y.size)]))
             if n_r > 0:
                 res = y[:n_r] - np.asarray(y_r[:n_r], dtype=np.float64)
                 residual_bytes = _wav_bytes(res, native_sr)
+                residual_path = play_dir / "res_residual.wav"
+                residual_path.write_bytes(residual_bytes)
+                residual_path = str(residual_path.resolve())
         except Exception:
             residual_bytes = b""
+            residual_path = None
 
     return {
         "start_corr": start_corr,
@@ -418,6 +457,12 @@ def run_res_payload(
         "orig_bytes": orig_bytes,
         "best_bytes": best_bytes,
         "residual_bytes": residual_bytes,
+        # Stable file paths for the players: st.audio(bytes) mints a new media
+        # file on every render, which makes the browser restart playback.
+        "orig_path": str(orig_wav.resolve()),
+        "best_path": str(best_wav_path),
+        "residual_path": residual_path,
+        "uploaded_path": str(uploaded_wav),
         "ledger_path": ledger["outputs"]["ledger"],
         "best_wav": str(best_path),
         "source_path": str(saved),
