@@ -24,6 +24,7 @@
   - [Benchmark Partial Recovery Results](#benchmark-partial-recovery-results)
 - [High-Fidelity Reconstruction: Sinusoidal Modeling Synthesis](#high-fidelity-reconstruction-sinusoidal-modeling-synthesis)
   - [Measured Benchmarks and Correction Values](#measured-benchmarks-and-correction-values)
+  - [What Material Does This Reconstruct Best?](#what-material-does-this-reconstruct-best)
   - [Measured Limits (not projections)](#measured-limits-not-projections)
 - [Closed-Loop Error Correction and Alignment](#closed-loop-error-correction-and-alignment)
   - [Multi-Stage Alignment Pipeline](#multi-stage-alignment-pipeline)
@@ -179,6 +180,63 @@ Key architectural insights derived from empirical testing:
 - **Refined Constant Frequency vs Instantaneous Trajectories:** Instantaneous STFT peak picking introduces approximately 0.1 Hz of frame-to-frame jitter. Integrating noisy instantaneous frequency leads to large phase drift. Stationary partials benefit from refined fixed frequencies (yielding 44.7 dB vs 10.2 dB).
 - **Least-Squares Amplitude and Phase Projection:** Windowing offsets are compensated via simultaneous two-column orthogonal projection.
 - **Analytic Log-Linear Envelope Fitting:** Envelopes are fitted to internal frame decay ($A(t) = A_0 e^{-\lambda t}$) rather than raw boundary-distorted frame gains.
+
+### What Material Does This Reconstruct Best?
+
+Measured, not assumed. The engine is a sinusoidal model, so what it can express is
+what it reconstructs well — and the correlation tracks the **tonal energy
+fraction** of the input at **r = +0.935** across the frozen fixture set:
+
+| fixture | harmonic energy | percussive energy | correlation | LSD |
+|---|---|---|---|---|
+| `stem_other` | 91.5 % | 2.2 % | 0.7376 | 9.50 |
+| `stem_vocals` | 82.3 % | 3.6 % | 0.7535 | 9.11 |
+| `mix_lost` (full mix) | 79.9 % | 8.6 % | **0.8518** | **3.61** |
+| `stem_bass` | 51.8 % | 20.3 % | 0.6160 | 3.03 |
+| `stem_drums` | 3.1 % | 83.5 % | **0.4107** | 18.04 |
+
+Synthetic probes, same engine, known musical character:
+
+| material | correlation | LSD | partials | wall-clock |
+|---|---|---|---|---|
+| Plucked string (harmonic decay) | **1.0000** | 0.35 | 23 | 13 s |
+| Four-on-the-floor beat (modelled kick + hat) | 0.9963 | 2.01 | 102 | 16 s |
+| Linear sweep | 0.8738 | 5.25 | 27 | 23 s |
+| Sustained organ | 0.8590 | 3.93 | 40 | 23 s |
+| Sustained chord pad | 0.8495 | 3.01 | 33 | 14 s |
+| Gated bass only | 0.5852 | 3.83 | 78 | 9 s |
+| **Vibrato tone** | **0.5196** | 12.54 | 942 | 91 s |
+| Snare roll | 0.4690 | 21.97 | 515 | 65 s |
+| White noise | 0.2342 | 29.52 | 821 | 150 s |
+
+**Best material:** sustained or exponentially decaying *harmonic* content with
+stable pitch — plucked strings, organs, pads, clean bass, and tonal percussion
+(a kick modelled as a decaying sine). The literature agrees: sinusoidal models
+are "unreasonably effective" for tonal sound and inefficient for noise and
+sudden transients (Sethares & Smith; Verma, Levine & Meng's S+N+T model).
+
+**The vibrato result is not a fluke.** Vibrato is *tonal*, yet it is the worst
+tonal case, because the engine's evidence stage separates harmonic from
+percussive content by median filtering the spectrogram, which assumes harmonic
+content forms *horizontal* structures. Vibrato and glissandos break that
+assumption (Park & Lee, ISMIR 2015), so a vibrato-heavy signal is split
+incorrectly before modelling even starts.
+
+**Beats:** beat-quantised sectioning helps, and now helps *without* the old
+collapse, because the phase origin is re-referenced to the section:
+
+| sectioning | correlation | LSD | SNR | partials | wall-clock |
+|---|---|---|---|---|---|
+| beat-quantised | **0.8518** | **3.61** | **5.61 dB** | 391 | 213 s |
+| fixed window | 0.8379 | 3.91 | 5.23 dB | 345 | 198 s |
+
+**For demos and the pitch deck, lead with sustained harmonic material** — a
+clean bass line, a chord pad, a plucked motif. Use the drum-heavy material as
+the *honest limit* case, where the engine reports 0.41 and LSD 18 dB, because
+that contrast is the argument for the transient/noise model rather than a
+liability.
+
+---
 
 ### Measured Limits (not projections)
 
