@@ -10,6 +10,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One shell for every runner. Windows defaults to PowerShell, where `set -o
+# pipefail` is a parse error, so the test step has to opt into bash.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: test ${{ matrix.os }} / py${{ matrix.python }}
@@ -48,6 +54,21 @@ jobs:
           name: test-output-${{ matrix.os }}-py${{ matrix.python }}
           path: test-output.txt
           if-no-files-found: ignore
+      # A commit status is readable without a token, so the failing test is
+      # visible without needing access to the runner logs.
+      - name: Report the failure as a commit status
+        if: failure()
+        run: |
+          DESC=$(grep -E '^(FAILED|ERROR)' test-output.txt | head -8 \
+                 | sed 's/ - .*//' | tr '\n' ' ' | cut -c1-130)
+          echo "desc=$DESC" >> "$GITHUB_OUTPUT"
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -d "{\"state\":\"failure\",\"description\":\"$DESC\",\"context\":\"pytest-${{ matrix.os }}\"}" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            > /dev/null
+          echo "::error::$DESC"
 
   python-versions:
     name: test ubuntu / py${{ matrix.python }}
