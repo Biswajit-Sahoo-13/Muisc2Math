@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  statuses: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -57,7 +61,7 @@ jobs:
       # A commit status is readable without a token, so the failing test is
       # visible without needing access to the runner logs.
       - name: Report the failure as a commit status
-        if: failure()
+        if: always()
         run: |
           python - <<'PY'
           import json, os, re, urllib.request
@@ -66,8 +70,10 @@ jobs:
           except OSError:
               text = ""
           fails = [l for l in text.splitlines() if l.startswith(("FAILED", "ERROR"))]
-          desc = " | ".join(re.sub(r" - .*", "", l) for l in fails[:6])[:130] \
-              or "pytest failed - see the artifact"
+          if not fails:
+              print("no failures to report")
+              raise SystemExit(0)
+          desc = " | ".join(re.sub(r" - .*", "", l) for l in fails[:6])[:130]
           body = json.dumps({"state": "failure", "description": desc,
                              "context": "pytest"}).encode()
           req = urllib.request.Request(
@@ -79,6 +85,7 @@ jobs:
                        "Content-Type": "application/json"})
           try:
               urllib.request.urlopen(req, timeout=30).read()
+              print("posted status:", desc)
           except Exception as exc:
               print("status post failed:", exc)
           print("::error::" + desc)
