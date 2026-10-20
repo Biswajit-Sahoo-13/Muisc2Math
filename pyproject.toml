@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Mathematical audio reverse engineering: songs in, editable equations out"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Biswajit Sahoo" }]
 keywords = ["dsp", "sinusoidal-modeling", "audio", "symbolic-regression", "streamlit"]
 classifiers = [
@@ -50,6 +51,9 @@ Repository = "https://github.com/Biswajit-Sahoo-13/Muisc2Math"
 
 [tool.setuptools]
 packages = ["src"]
+# main.py is the CLI entry point and lives at the repo root, so it ships as a
+# top-level module. Without this the `m2m` console script has nothing to call.
+py-modules = ["main"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
