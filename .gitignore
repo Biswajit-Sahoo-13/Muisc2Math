@@ -104,3 +104,7 @@ data/output/_scoreboard/**/*.txt
 # never itself tracked.
 PROJECT_BUNDLE.md
 PROJECT_BUNDLE.zip
+
+# Local build output from tools/build_project_bundle.py and python -m build
+dist_tmp/
+*.egg-info/
