@@ -294,6 +294,10 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 
 ## Quickstart Guide
 
+> **New here?** See **[INSTALL.md](INSTALL.md)** — it covers what a CLI is, how to
+> install (venv, `pip install -e .`, optional extras) and how to run the app
+> and the CLI. Everything there was verified from a clean virtualenv.
+
 ### 1. Interactive Web Studio
 
 Launch the Streamlit interface:

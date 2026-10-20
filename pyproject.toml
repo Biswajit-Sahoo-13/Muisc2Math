@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "m2m-res"
+version = "0.1.0"
+description = "Mathematical audio reverse engineering: songs in, editable equations out"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Biswajit Sahoo" }]
+keywords = ["dsp", "sinusoidal-modeling", "audio", "symbolic-regression", "streamlit"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The core engine needs none of the heavy stack. Source separation (Demucs) is
+# an optional extra because it pulls in torch, which is a ~200 MB download and
+# is not needed to run the engine on a single mix.
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "soundfile>=0.12.0",
+    "librosa>=0.10.0",
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+    "streamlit>=1.28.0",
+]
+
+[project.optional-dependencies]
+# Real source separation instead of the HPSS band split.
+separators = [
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+    "demucs>=4.0.0",
+]
+# Spotify basic-pitch, used for note extraction when it is present.
+notes = ["basic-pitch>=0.3.0"]
+dev = ["pytest>=7.0.0"]
+
+[project.scripts]
+m2m = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/Biswajit-Sahoo-13/Muisc2Math"
+Repository = "https://github.com/Biswajit-Sahoo-13/Muisc2Math"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
