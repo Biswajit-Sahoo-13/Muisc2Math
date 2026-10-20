@@ -82,4 +82,19 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/output/*
 !data/output/.gitkeep
+# The scoreboard and the frozen fixture set are EVIDENCE, not output dumps:
+# every measured claim in docs/res_research.md points at a row of the
+# scoreboard, and the fixtures are the only way to reproduce those rows
+# (the source tracks themselves are not versioned).
+!data/output/scoreboard.json
+!data/output/_fixtures/
+!data/output/_fixtures/*.wav
+# The baseline and after ledgers are the citation behind every number. The
+# rendered WAVs and equation dumps beside them are reproducible outputs, so
+# they stay ignored. NB: the patterns must not prune the directory itself -
+# git does not descend into an excluded directory, so a later negation for a
+# file inside it would never be reached.
+!data/output/_scoreboard/
+data/output/_scoreboard/**/*.wav
+data/output/_scoreboard/**/*.txt
 

@@ -33,6 +33,25 @@ from src.res_synthesis import _corr, _render_partial, _support_mask
 _E_REL_MARGIN = 1e-6  # relative residual-energy improvement to accept
 _NOISE_K = 4.0  # overfit guard: expected drop from p random params ~ p*sigma^2
 
+# Whether a class-B (harmonic string) note is one-sided, i.e. silent before
+# its envelope anchor. The documented model is one-sided
+# (``A * u(x - x0) * exp(-lam*(x - x0)) * cos(...)``), and the alternative
+# plays a note fitted at t0 = t_mid at full amplitude through the first half
+# of the section. Measured on the mix_lost ledger: the bank notes carried up
+# to 99.6% of their energy before their onset.
+_BANK_NOTE_ONE_SIDED = True
+
+# Gate for the stochastic classes. A clean 808 reads SFM ~0.000 and ZCR ~0.006;
+# a hiss/air residual reads ZCR 0.08-0.15 on real stems. Whole-spectrum SFM is
+# kept as an alternative trigger because a pure white-noise residual does read
+# high, but it can never be the primary detector (see tournament_section).
+_LPC_MIN_SFM = 0.20
+_LPC_MIN_ZCR = 0.07
+
+# Lowest fundamental the bank will nominate. 808 sub-bass lives at 40-60 Hz,
+# so a floor of 55 Hz excluded the single most common bass register.
+_F0_MIN_HZ = 30.0
+
 
 def acceptance_margin(
     e_y: float, cur_err: float, param_count: int, n: int
@@ -151,7 +170,20 @@ def _hann_mag(x: np.ndarray) -> np.ndarray:
 
 
 def _f_grid() -> np.ndarray:
-    return np.geomspace(55.0, 500.0, 221)
+    # The grid used to start at 55 Hz, which put the whole 808 sub-bass
+    # register (40-60 Hz) out of reach of the harmonic-string class: a
+    # section whose only unmodelled content is a 45 Hz 808 produced zero
+    # bank candidates.
+    #
+    # The 55-500 Hz part is kept point-for-point identical to the old grid on
+    # purpose. Rescaling the whole grid also rescales its spacing, which
+    # changes the salience ranking and therefore every nomination - measured
+    # on the drums stem, a uniform 30-500 Hz grid displaced good class-B
+    # notes and percussive bundles and cost 0.021 correlation. Adding a
+    # separate sub-bass segment leaves everything above 55 Hz untouched.
+    upper = np.geomspace(55.0, 500.0, 221)
+    lower = np.geomspace(_F0_MIN_HZ, 55.0, 41)[:-1]
+    return np.concatenate([lower, upper])
 
 
 def f0_candidates(
@@ -206,7 +238,7 @@ def f0_candidates(
             f0 = float(grid[g])
             if svals[g] <= 0:
                 continue
-            lo, hi = max(40.0, f0 - 2.0), f0 + 2.0
+            lo, hi = max(_F0_MIN_HZ, f0 - 2.0), f0 + 2.0
             try:
                 res = minimize_scalar(
                     lambda fv: -salience(fv, spectra),
@@ -300,14 +332,22 @@ def _masked_proj_basis(
     t0: float,
     f: float,
     lam: float,
-    sec_start: float,
-    sec_end: float,
+    start: float,
+    end: float,
     stft_half_window_s: float,
+    unit_step: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Basis matching _render_partial exactly: masked damped (cos, sin)."""
+    """Basis matching _render_partial exactly: masked damped (cos, sin).
+
+    ``start``/``end`` must be the PARTIAL's own support, not the section's:
+    a percussive mode is fitted over its 180 ms window but would otherwise be
+    projected as if it sounded for the whole section.
+    """
     env = np.exp(-lam * np.maximum(t - t0, 0.0))
+    if unit_step:
+        env = np.where(t >= t0, env, 0.0)
     ang = 2.0 * np.pi * f * t_fit
-    mask = _support_mask(t, sec_start, sec_end, lam, 1.0, stft_half_window_s)
+    mask = _support_mask(t, start, end, lam, 1.0, stft_half_window_s)
     return env * mask * np.cos(ang), env * mask * np.sin(ang)
 
 
@@ -329,7 +369,18 @@ def _variant_partial(
         "frequency": round(f, 6),
         "phase": round(ph, 6),
         "model": "damped",
-        "start_time": round(sec_start, 6),
+        # The note must not sound before its own onset. The grid search tries
+        # both the section start and the section midpoint, and start_time was
+        # the section start - so a note fitted at t0 = t_mid played at FULL
+        # amplitude through the whole first half of the section, with the
+        # decay only starting at t0. Measured on the mix_lost ledger: 114 of
+        # 187 deterministic non-glide partials emitted more than 30% of their
+        # energy before their onset, the worst at 99.6%. Bounding start_time
+        # to the onset is sufficient - the support mask's half-window attack
+        # ramp then covers only the half window before it, which is a musical
+        # attack and not a pre-onset error. An explicit unit step on top of
+        # that was measured to be redundant (0.00% pre-onset either way).
+        "start_time": round(max(sec_start, t0), 6),
         "end_time": round(sec_end, 6),
         "m": int(m),
         "note_group": round(f0, 3),
@@ -352,9 +403,14 @@ def _variant_render(
         f = float(p["frequency"])
         ph = float(p["phase"])
         env = a * np.exp(-lam * np.maximum(t - t0, 0.0))
+        if p.get("unit_step"):
+            env = np.where(t >= t0, env, 0.0)
         ang = 2.0 * np.pi * f * t_fit - ph
+        # The projection basis must use the SAME support the renderer will
+        # use, or the fitted coefficients describe a different signal.
         mask = _support_mask(
-            t, sec_start, sec_end, lam, a, stft_half_window_s
+            t, float(p.get("start_time", sec_start)),
+            float(p.get("end_time", sec_end)), lam, a, stft_half_window_s
         )
         out += env * np.cos(ang) * mask
     return out
@@ -434,7 +490,7 @@ def _fit_candidate(
         best: Optional[Tuple[float, float, float, float]] = None
         for lam in decay_grid:
             c, s = _masked_proj_basis(
-                t, t_fit, t0, f, float(lam), sec_start, sec_end,
+                t, t_fit, t0, f, float(lam), max(sec_start, t0), sec_end,
                 stft_half_window_s,
             )
             base = float(np.sum(np.square(c)) + np.sum(np.square(s)))
@@ -512,7 +568,8 @@ def _vc_lock(
         lam_lock = max(a0 + b0 * f, 0.0)
         c, s = _masked_proj_basis(
             t, t_fit, float(p["envelope_t0"]), f, lam_lock,
-            sec_start, sec_end, stft_half_window_s,
+            max(sec_start, float(p["envelope_t0"])), sec_end,
+            stft_half_window_s,
         )
         base = float(np.sum(np.square(c)) + np.sum(np.square(s)))
         if base <= 1e-18:
@@ -770,7 +827,8 @@ def percussive_bundle(
         # Sequential deflation: each mode is fitted against what previous
         # modes left, so overlapping modes cannot double-account energy.
         c_best, s_best = _masked_proj_basis(
-            t_g, t_fit, hit_t, f, lam_best, hit_t, end_s, stft_half_window_s
+            t_g, t_fit, hit_t, f, lam_best, hit_t, end_s, stft_half_window_s,
+            unit_step=True,
         )
         w_cur -= cc * c_best + ss * s_best
         a = float(np.hypot(cc, ss))
@@ -788,6 +846,11 @@ def percussive_bundle(
             "end_time": round(end_s, 6),
             "m": None,
             "note_group": round(hit_t, 3),
+            # One-sided: a drum hit must not sound before the hit. The
+            # support mask's attack ramp reaches half a STFT window back, so
+            # without this the pre-hit ramp carried most of a fast mode's
+            # energy (98.8% on one measured mode).
+            "unit_step": True,
         })
     if not partials:
         return _Variant([], float(np.sum(target ** 2)), 0, 0.0, 0.0, hit_t)
@@ -1056,8 +1119,12 @@ def lpc_noise_hypothesis(
         return _Variant([], e_res, 0, 0.0, 0.0, t0)
 
     p_order = min(order, n // 4)
-    r = np.correlate(residual, residual, mode="full")
-    r_pos = r[n - 1 : n - 1 + p_order + 1]
+    # FFT autocorrelation: O(n log n) instead of the O(n^2) np.correlate.
+    # On a 2.4 s section at 22.05 kHz the direct form is ~3e9 multiply-adds,
+    # which is what made the noise class cost 3x the whole run.
+    n_fft = 1 << int(np.ceil(np.log2(max(2 * n, 2))))
+    spec = np.fft.rfft(residual, n_fft)
+    r_pos = np.fft.irfft(spec * np.conj(spec), n_fft)[: p_order + 1]
     if r_pos[0] <= 1e-12:
         return _Variant([], e_res, 0, 0.0, 0.0, t0)
 
@@ -1161,11 +1228,13 @@ def _accept_spectral(
     cur_err: float,
     cur_corr: float,
     render_state: Any,
-sr: int,
+    sr: int,
     gain_ladder: Optional[Sequence[float]],
     corr_floor: float = 0.60,
     corr_floor_mode: str = "absolute",
     corr_max_drop: float = 0.05,
+    relative: bool = False,
+    require_error_drop: bool = False,
 ) -> Tuple[bool, float, float]:
     """Spectral acceptance lane for stochastic hypotheses.
 
@@ -1189,6 +1258,11 @@ Acceptance is instead judged primarily in the magnitude domain: overall
     the floor rejects any candidate whose acceptance would push the stem below
     the limit, regardless of how much LSD it bought. The original partial list
     is restored on every failure.
+
+    ``relative`` makes the gain ladder a *multiplier* on each candidate's own
+    fitted amplitude instead of an absolute level. Classes whose amplitude is
+    a fitted physical quantity (LPC noise) must be scaled relatively, or the
+    ladder would replace a measured level with an arbitrary one.
     """
     from src.residual import compute_error_metrics
 
@@ -1197,29 +1271,42 @@ Acceptance is instead judged primarily in the magnitude domain: overall
     keep = list(partials)
     render_prev = render_state()
     lsd_before = compute_error_metrics(
-        y_sec, render_prev, sr=sr)["log_spectral_distance_db"]
+        y_sec, render_prev, sr)["log_spectral_distance_db"]
     hf_before = hf_log_spectral_distance(y_sec, render_prev, sr)
     floor_now = _spectral_corr_floor(corr_floor, corr_floor_mode, cur_corr,
                                     corr_max_drop)
 
+    def _scaled(trial: List[Dict[str, Any]], g: float) -> List[Dict[str, Any]]:
+        out = []
+        for p in trial:
+            q = dict(p)
+            q["amplitude"] = (
+                g * float(p.get("amplitude", 1.0)) if relative else g
+            )
+            out.append(q)
+        return out
+
     best = None
     for g in (gain_ladder or (0.15, 0.25, 0.4, 0.6, 1.0)):
         partials[:] = keep
-        trial = [dict(p) for p in fresh]
-        for p in trial:
-            p["amplitude"] = g
+        trial = _scaled(fresh, g)
         partials.extend(trial)
         cand = render_state()
-        lsd_c = compute_error_metrics(y_sec, cand, sr=sr)["log_spectral_distance_db"]
+        lsd_c = compute_error_metrics(y_sec, cand, sr)["log_spectral_distance_db"]
         hf_c = hf_log_spectral_distance(y_sec, cand, sr)
         if lsd_c < lsd_before - 1e-9 and hf_c < hf_before - 1e-9:
             c_c = _corr(y_sec, cand)
             if c_c < floor_now:
                 continue
+            err_td = float(np.sum((y_sec - cand) ** 2))
+            if require_error_drop and err_td >= cur_err:
+                # The magnitude domain said yes, but the candidate did not
+                # reduce the time-domain residual, so it is fitting the
+                # noise rather than the signal.
+                continue
             score = lsd_c + hf_c
             if best is None or score < best[0]:
-                best = (score, lsd_c, g,
-                        float(np.sum((y_sec - cand) ** 2)), c_c)
+                best = (score, lsd_c, g, err_td, c_c)
 
     if best is None:
         partials[:] = keep
@@ -1227,10 +1314,7 @@ Acceptance is instead judged primarily in the magnitude domain: overall
 
     _score, _lsd, g, err_after, corr_after = best
     partials[:] = keep
-    trial = [dict(p) for p in fresh]
-    for p in trial:
-        p["amplitude"] = g
-    partials.extend(trial)
+    partials.extend(_scaled(fresh, g))
     return True, err_after, corr_after
 
 
@@ -1294,7 +1378,7 @@ def tournament_section(
     start_sample: int = 0,
     stft_half_window_s: float = 0.0,
     k: int = 2,
-    k_hits: int = 2,
+    k_hits: int = 12,
     enable_noise: bool = False,
     enable_spectral_lane: bool = False,
     gain_ladder: Optional[Sequence[float]] = None,
@@ -1407,6 +1491,31 @@ def tournament_section(
             y_sec, partials, fresh, vari.param_count, vari.err,
             e_y, cur_err, cur_corr, state, sr=sr,
         )
+        if not ok:
+            # A percussive mode cannot improve waveform correlation - it is a
+            # fast-decay burst, and correlation demands sample-exact phase
+            # coherence that a burst against real percussion never achieves.
+            # The time-domain gate therefore refuses candidates that clearly
+            # reduce residual energy. Read on the drums stem: every
+            # percussive bundle was rejected with residual_after ==
+            # residual_before, while the envelope magnitude (LSD 18.40 dB)
+            # was the largest single error in the suite.
+            #
+            # So the magnitude domain gets the vote - but the candidate must
+            # still REDUCE the time-domain residual, which is the part of the
+            # time-domain gate that does work for percussion and the part
+            # that stops the bank chasing noise. The energy margin is checked
+            # first: a candidate that cannot beat the overfit guard is not
+            # evidence of anything, in either domain.
+            if vari.err < cur_err - acceptance_margin(
+                e_y, cur_err, vari.param_count, len(y_sec)
+            ):
+                ok, err_after, corr_after = _accept_spectral(
+                    y_sec, partials, fresh, cur_err, cur_corr, state, sr=sr,
+                    gain_ladder=None, corr_floor=corr_floor,
+                    corr_floor_mode="relative", corr_max_drop=corr_max_drop,
+                    relative=True, require_error_drop=True,
+                )
         if ok:
             cur_err, cur_corr = err_after, corr_after
         rec: Dict[str, Any] = {
@@ -1414,7 +1523,8 @@ def tournament_section(
             "t0": round(float(hit_sample) / sr, 6),
             "m_count": len(fresh), "param_count": vari.param_count,
             "residual_before": round(before, 3),
-            "residual_after": round(cur_err, 3), "accepted": ok,
+            "residual_after": round(cur_err, 3),
+            "accepted": ok,
         }
         records.append(rec)
 
@@ -1440,6 +1550,47 @@ def tournament_section(
                 "residual_before": round(before, 3),
                 "residual_after": round(cur_err, 3), "accepted": ok,
             })
+
+    # ---- Class E: LPC formant noise (residual that is genuinely noise-like) ----
+    if enable_noise:
+        resid = y_sec - state()
+        cur_err = float(np.sum(resid ** 2))
+        cur_corr = _corr(y_sec, y_sec - resid)
+        # Gate: a stochastic model only helps where the residual really IS
+        # noise. Whole-spectrum SFM is useless as the primary detector here:
+        # a residual that still carries low-frequency tonal energy pins the
+        # geometric mean to ~0 no matter how noisy its top end is (measured
+        # on real stems: SFM 0.0000-0.0086 while the zero-crossing rate
+        # separated hiss from tone cleanly). So the gate is SFM *or* ZCR, with
+        # the ZCR threshold set from that measurement.
+        sfm = spectral_flatness(resid)
+        zcr = zero_crossing_rate(resid)
+        if sfm > _LPC_MIN_SFM or zcr > _LPC_MIN_ZCR:
+            vari_lpc = lpc_noise_hypothesis(
+                resid, sr, start_sample, stft_half_window_s
+            )
+            if vari_lpc.partials:
+                before = cur_err
+                ok, err_after, corr_after = _accept_spectral(
+                    y_sec, partials, vari_lpc.partials,
+                    cur_err, cur_corr, state, sr=sr,
+                    gain_ladder=None, corr_floor=corr_floor,
+                    corr_floor_mode=corr_floor_mode,
+                    corr_max_drop=corr_max_drop, relative=True,
+                )
+                if ok:
+                    cur_err, cur_corr = err_after, corr_after
+                records.append({
+                    "class": "lpc_noise", "f0": None,
+                    "t0": round(float(start_sample) / sr, 6),
+                    "m_count": len(vari_lpc.partials),
+                    "param_count": vari_lpc.param_count,
+                    "sfm": round(float(sfm), 6),
+                    "zcr": round(float(zcr), 6),
+                    "residual_before": round(before, 3),
+                    "residual_after": round(cur_err, 3),
+                    "accepted": ok,
+                })
 
     # ---- Class D: sibilance / cymbal bursts on the spectral lane (opt-in) ----
     if enable_spectral_lane:

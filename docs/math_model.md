@@ -359,12 +359,30 @@ Phase 5 addresses the mathematical reality of full commercial master mixes vs. i
 
 ### 9.1 The "0.99 Mirage" on Full Commercial Masters
 
+> **This section's ceiling claim was measured and retracted.** The paragraph
+> below originally read: *"In deterministic SMS, 0.65-0.75 correlation is the
+> theoretical state-of-the-art ceiling on dense commercial masters. Forcing
+> the engine beyond this threshold creates severe audible artifacts."* That
+> was an assertion, not a measurement, and it was **false**: the same engine,
+> on the same fixture, now measures **0.8518** correlation and **3.61 dB**
+> log-spectral distance on a dense commercial master (`Metre - Lost.mp3`,
+> 10 s, 6 iterations) with **391** partials - see `docs/res_research.md`
+> § Phase 7 and `data/output/scoreboard.json`. The overfitting artefacts the
+> claim warned about did not appear; the LSD improved rather than degraded.
+>
+> The *argument* below is still sound as a statement about the metric: a
+> one-sample phase error flips a 10 kHz bin's correlation (to -0.9577 at
+> 22.05 kHz, not -1.0 as originally written). What was wrong was turning it
+> into a numerical ceiling on the engine rather than a property of the
+> metric. The real limit on a full master is the model's expressive power -
+> and it is well above 0.75.
+
 - **The Microscopic Phase Penalty:**
-  Pearson correlation $\rho = \frac{\langle x, \hat{x} \rangle}{\|x\|_2 \|\hat{x}\|_2}$ demands exact sample-by-sample phase coherence across all frequency bins simultaneously. At high frequencies (e.g. 10 kHz with period $T \approx 2.2$ samples at 22.05 kHz), a phase shift of merely 1 sample ($0.045$ ms) flips the correlation of that bin to $-1.0$. Even if the audio sounds 100% indistinguishable to human ears, microscopic phase jitter between mastered dynamic compression/limiting and reconstructed partials mathematically caps global $\rho$ at $\sim 0.65 - 0.75$.
+  Pearson correlation $\rho = \frac{\langle x, \hat{x} \rangle}{\|x\|_2 \|\hat{x}\|_2}$ demands exact sample-by-sample phase coherence across all frequency bins simultaneously. At high frequencies (e.g. 10 kHz with period $T \approx 2.2$ samples at 22.05 kHz), a phase shift of merely 1 sample ($0.045$ ms) flips that bin's correlation to $-0.9577$. Even if the audio sounds 100% indistinguishable to human ears, microscopic phase jitter between mastered dynamic compression/limiting and reconstructed partials depresses the per-bin correlation of the high band. That is a property of the *metric*, not a ceiling on the engine.
 - **Master Bus Non-Linearities:**
-  Commercial masters contain brickwall limiters, multiband saturation, and stereo widening that introduce chaotic intermodulation distortion. Deterministic linear equations (sinusoids and linear filter poles) cannot invert non-linear limiters without overfitting noise.
-- **The Honest Physics Limit:**
-  In deterministic Spectral Modeling Synthesis (SMS), $0.65 - 0.75$ correlation is the theoretical state-of-the-art ceiling on dense commercial masters. Forcing the engine beyond this threshold creates severe audible artifacts (overfitting noise spikes with pseudo-sinusoids, boundary clicks, and robotic whispering).
+  Commercial masters contain brickwall limiters, multiband saturation, and stereo widening that introduce chaotic intermodulation distortion. Deterministic linear equations (sinusoids and linear filter poles) cannot invert non-linear limiters exactly; the error they leave is what the remaining residual is.
+- **Where the real limit is:**
+  The measured limit on a dense commercial master is the **expressive power of the model**, not a phase penalty. A sum of damped sinusoids plus a gated stochastic class reconstructs a mastered mix to $\rho = 0.85$ (measured). What still costs correlation is content the model does not carry: percussion transients (drums stem: 0.4107 / LSD 18.04 dB) and the high-band material the percussive class cannot afford to model at the current mode budget.
 
 ### 9.2 The "Stem-First" Architectural Workflow
 

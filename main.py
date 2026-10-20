@@ -400,6 +400,8 @@ def cmd_res(args: argparse.Namespace) -> None:
             target_corr=args.target_corr,
             bank=not args.no_bank,
             spectral_lane=args.spectral_lane,
+            enable_noise=args.noise,
+            k_notes=args.k_notes, k_hits=args.k_hits,
         )
         print("\n=== Multi-Track Stem Ledger (res/2.0-multitrack) ===")
         for s_name in ("bass", "drums", "vocals", "other"):
@@ -454,6 +456,8 @@ def cmd_res(args: argparse.Namespace) -> None:
             min_gain=0.0,
             bank=not args.no_bank,
             spectral_lane=args.spectral_lane,
+            enable_noise=args.noise,
+            k_notes=args.k_notes, k_hits=args.k_hits,
         )
         rec = recommend_iterations(ledger, min_gain=args.min_gain or 1e-3)
         _print_recommendation(rec)
@@ -476,7 +480,10 @@ def cmd_res(args: argparse.Namespace) -> None:
                 stop_on_no_improvement=args.stop_on_no_improvement,
                 bank=not args.no_bank,
                 spectral_lane=args.spectral_lane,
-            )
+
+            enable_noise=args.noise,
+            k_notes=args.k_notes, k_hits=args.k_hits,
+        )
         auto_note = " (auto)"
     else:
         print(f"[*] RES on '{args.input}' (provider: {args.provider})")
@@ -506,6 +513,8 @@ def cmd_res(args: argparse.Namespace) -> None:
             stop_on_no_improvement=args.stop_on_no_improvement,
             bank=not args.no_bank,
             spectral_lane=args.spectral_lane,
+            enable_noise=args.noise,
+            k_notes=args.k_notes, k_hits=args.k_hits,
         )
     fill_note = ""
     if getattr(args, "spectral_fill", 0.0) > 0.0:
@@ -797,7 +806,7 @@ def cmd_viral_phonk(args: argparse.Namespace) -> None:
     )
     print("\n[+] Rendered Equations:")
     for key, item in REEL_EQUATIONS.items():
-        print(f"  • {item['title']}: {item['concept']}")
+        print(f"  â€¢ {item['title']}: {item['concept']}")
     print(f"\n[+] Rendered Sinc Drop WAV:    {res['sinc_drop_wav']}")
     print(f"[+] Rendered Complete Phonk:  {res['complete_phonk_wav']}")
     print(f"[+] Rendered TikTok Plot:     {res['sinc_drop_plot']}")
@@ -1026,6 +1035,22 @@ def main() -> None:
         "--spectral-lane", action="store_true",
         help="Allow stochastic sibilance/cymbal bursts to be accepted on "
              "log-spectral distance instead of waveform correlation",
+    )
+    p_res.add_argument(
+        "--k-hits", type=int, default=12,
+        help="Percussive hits the hypothesis bank may nominate per section "
+             "(class C). The default 2 covers roughly one beat.",
+    )
+    p_res.add_argument(
+        "--k-notes", type=int, default=2,
+        help="Harmonic notes the hypothesis bank may nominate per section "
+             "(class B).",
+    )
+    p_res.add_argument(
+        "--noise", action="store_true",
+        help="Let the hypothesis bank model the residual with a stochastic "
+             "class (LPC formant noise). A sum of sinusoids cannot express "
+             "breath, air or sibilance, so this content is absent without it.",
     )
     p_res.add_argument(
         "--target-corr", type=float, default=0.98,

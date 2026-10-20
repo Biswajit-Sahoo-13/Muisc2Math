@@ -181,10 +181,14 @@ Key architectural insights derived from empirical testing:
 - **Least-Squares Amplitude and Phase Projection:** Windowing offsets are compensated via simultaneous two-column orthogonal projection.
 - **Analytic Log-Linear Envelope Fitting:** Envelopes are fitted to internal frame decay ($A(t) = A_0 e^{-\lambda t}$) rather than raw boundary-distorted frame gains.
 
-### Deterministic Full-Mix Physical Limits
+### Measured Limits (not projections)
 
-- **Full-Mix Physical Ceiling (~0.70 to 0.75 Correlation):** On dense, mastered commercial mixes, multiband brickwall limiters, saturation, and microsecond phase jitter limit deterministic sinusoidal correlation to ~0.75.
-- **Stem-First Separation Paradigm (0.95 to 0.99 Correlation):** When source separation (e.g. Demucs) separates mixes into Drums, Bass, Vocals, and Other stems, M2M (RES) achieves **0.95 to 0.99 correlation** on isolated tonal stems.
+Every figure below is measured by `tools/bottleneck_scoreboard.py` on a frozen fixture set and recorded in `data/output/scoreboard.json`, with the exact command and the ledger path stored alongside it. See `docs/res_research.md` § Phase 7 for provenance.
+
+- **Full mix, 10 s, 6 iterations:** `Metre - Lost.mp3` → **corr 0.8518, SNR 5.61 dB, LSD 3.61 dB**. Dense mastered material lands in the 0.80–0.86 band: multiband brickwall limiting, saturation and microsecond phase jitter are real limits on deterministic sinusoidal correlation.
+- **Separated stems (native DSP partition of *j-hope - MONA LISA*, 10 s):** vocals **0.7535**, other **0.7376**, bass **0.6160**, drums **0.4107**. Tonal stems land in the 0.62–0.76 band.
+- **Percussion is the hard case.** A drum stem reconstructs at **0.4107 correlation / LSD 18.04 dB**: a kick, a snare and a hi-hat are not sums of sinusoids, and even at 12 hits per section the percussive class can only afford 6 modes per hit. This is a modelling limit, not a renderer limit.
+- **The renderer/analyser replica invariant is now enforced by test.** `tests/test_res_replica.py` compares the analyser's own output against the RES render of the *same* fitted parameters — the only comparison that can detect a replica gap, since the loop overwrites each section's recorded metric with the RES renderer's own score. `tests/test_res_phase_origin.py` pins the phase re-referencing law and the section-assignment rule.
 
 ---
 
@@ -225,6 +229,8 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 - **Gated Linear Predictive Coding (LPC) Noise:** LPC noise modeling is strictly gated by Spectral Flatness Measure (SFM) and Zero-Crossing Rate (ZCR). Clean sub-bass bypasses LPC modeling entirely.
 - **Dampened Clustered Frequency Refinement:** Joint least-squares frequency shifts are clamped to $\pm 2.0$ Hz with quadratic regularization, eliminating bass phasing and flanging artifacts.
 - **Log-Spectral Distance (LSD) Referee Metric:** Balances time-domain correlation with spectral fidelity, prioritizing auditory timbre matching over microsecond phase jitter.
+
+> **Which of these actually run.** The OLA seam smoother, the Hilbert phase alignment and the clustered joint refinement are all implemented and unit-tested, but the production render path does not call them (`render_ledger(..., ola=False)` at every production call site), so they contribute nothing to a shipped reconstruction. The LPC noise class is likewise opt-in: it is reached only with `--noise`, and its gate is calibrated on measurement rather than on the SFM threshold this list implies — whole-spectrum SFM is ~0 on real residuals and can never be the primary trigger, so the zero-crossing rate carries the gate. `docs/res_research.md` § Phase 7 records which claims are live and which are not.
 
 ---
 
@@ -296,7 +302,7 @@ python -m unittest discover tests
 
 | Command | Description | Primary Inputs / Outputs |
 |---|---|---|
-| `python main.py res` | Iterative equation synthesis loop with Phase 5 DSP stabilization | Input audio -> Reconstructed audio, residual WAV, equation JSON |
+| `python main.py res` | Iterative equation synthesis loop with Phase 5 DSP stabilization. Flags: `--noise` (stochastic residual model), `--spectral-lane` (magnitude-domain acceptance), `--k-hits` / `--k-notes` (per-section hypothesis caps; `--k-hits` defaults to 12), `--stems auto\|demucs\|<dir>` (stem-first mode) | Input audio -> Reconstructed audio, residual WAV, equation JSON |
 | `python main.py res-recommend` | Extrapolates gain decay and computes optimal iteration budget | Input ledger JSON -> Recommendation metrics |
 | `python main.py recreate-song` | Multi-track equation decomposition of full audio files | Input audio -> DAW project JSON and rendered WAV |
 | `python main.py fit-formula` | Matches audio segments against `FORMULA_BANK` via L-BFGS-B | Input WAV -> Fitted audio WAV and parameter dictionary |
@@ -352,11 +358,15 @@ python -m unittest discover tests
 │   ├── test_math_track_engine.py# Multi-track engine, variable evaluation, and MIDI tests
 │   ├── test_error_correction.py# Closed-loop alignment, level matching, and energy guard tests
 │   ├── test_res_iterations.py  # RES iterative convergence and residual reduction tests
+│   ├── test_res_phase_origin.py# Renderer/analyser replica invariant: the ledger's metric must describe the ledger's partials
 │   ├── test_app_structure.py   # Streamlit UI structure validation tests
 │   └── test_app_upload.py      # Streamlit upload pipeline verification tests
 ├── tools/
 │   ├── res_bytebeat.py         # Bytebeat formula conversion and audio generation utility
-│   └── res_floatbeat.py        # Floatbeat synthesis and URL exporter
+│   ├── res_floatbeat.py        # Floatbeat synthesis and URL exporter
+│   ├── bottleneck_scoreboard.py # Frozen-fixture scoreboard: every claim is a row with a command and a ledger path
+│   ├── make_fixtures.py        # Regenerates the frozen fixture set (real separated stems)
+│   └── check_render_fidelity.py # Compares a saved ledger's metrics against a fresh render of its own partials
 ├── site/                       # Web-based Dollchan audio player and interactive demos
 ├── bytebeat-composer/          # Embedded Bytebeat composer and visualizer tool
 ├── docs/

@@ -83,9 +83,16 @@ def _analytic_envelope(
     """
     if times.size == 0:
         return amps, 0.0, 0.0, 0.0
+    # The interior slice must leave at least 4 points, or the fit below
+    # cannot run and the track falls back to a flat envelope. The old
+    # condition (`times.size > 2 * skip_frames + 2`, i.e. > 6) let a SEVEN
+    # frame track through with `ti.size == 3`, so exactly the tracks that
+    # could have been fitted were the ones that were not: 7-frame tracks
+    # were pinned to decay = 0 with an anchor two frames into the note,
+    # which left them emitting their pre-onset energy.
     interior = (
         slice(skip_frames, times.size - skip_frames)
-        if times.size > 2 * skip_frames + 2
+        if times.size >= 2 * skip_frames + 4
         else slice(None)
     )
     ti = times[interior]
@@ -214,6 +221,8 @@ def refine_track(
             "freq_spread_hz": 0.0,
             "start_time": 0.0,
             "end_time": 0.0,
+            "phase_origin": 0.0,
+            "phase_ref_hz": 0.0,
         }
 
     n = len(reference)
@@ -355,6 +364,18 @@ def refine_track(
         "freq_spread_hz": round(spread, 3),
         "start_time": round(float(times[0]), 6),
         "end_time": round(float(times[-1]), 6),
+        # The phase was projected against this track's *local* time axis
+        # (t_axis = arange(n)/sr inside the analysis window), so it is only
+        # meaningful together with the origin it was measured against.
+        # ``phase_origin`` is that origin in seconds; it is filled in when the
+        # window is pasted onto the global timeline, and the evidence builder
+        # uses it to re-reference the phase onto a section origin.
+        "phase_origin": 0.0,
+        # The frequency the phase reference term was built from. A glide's
+        # phase is integral + 2*pi*(f_ref - f_guess)*t, so a renderer that
+        # reproduces the same term needs the same f_guess, not a fresh
+        # estimate of the trajectory's median.
+        "phase_ref_hz": round(float(f_guess), 6),
     }
     if use_trajectory:
         params["trajectory"] = {
@@ -626,6 +647,20 @@ def _reconstruction_windowed(
         for p in sub["fitted_parameters"]:
             for key in ("envelope_t0", "start_time", "end_time"):
                 p[key] = round(float(p.get(key, 0.0)) + off, 6)
+            # The phase was projected against this window's LOCAL time axis
+            # (t_axis = arange(n)/sr inside the window). The times above are
+            # shifted to the global timeline, but a phase cannot be shifted
+            # by adding an offset - it is only meaningful together with the
+            # origin it was measured against. Record that origin so the
+            # evidence builder can re-reference the phase onto whatever
+            # origin the renderer will use.
+            p["phase_origin"] = round(float(off), 6)
+            # The window's far edge. The analyser renders each partial inside
+            # its own window and the result is pasted at the window's start,
+            # so a partial's support (its hold plus release) is clipped there.
+            # A section-based renderer that lets that tail run past the
+            # window renders audio the analyser never produced.
+            p["window_end"] = round(min(w_start + win, n_samples) / sr, 6)
             if "trajectory" in p:
                 p["trajectory"]["t"] = [
                     round(float(v) + off, 6) for v in p["trajectory"]["t"]

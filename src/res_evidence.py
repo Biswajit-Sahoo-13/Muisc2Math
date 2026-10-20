@@ -390,6 +390,94 @@ def get_cached_section_evidence(
     return ev
 
 
+def _rephase_to_section(
+    p: Dict[str, Any], section_start: float
+) -> Dict[str, Any]:
+    """Re-reference a partial's phase from its analysis window to a section.
+
+    The SMS engine projects every partial against its *analysis window's* local
+    time axis, so the phase it returns is window-relative. The RES renderer
+    draws every partial on the *section's* local axis (the equation sheet
+    documents it: ``x = t - t_s``). Those two origins agree only when the
+    section boundaries happen to coincide with the analysis windows.
+
+    When they do not, every partial is rotated by ``2*pi*f*(origin difference)``
+    - hundreds of full cycles for a mid-range note - so the reconstruction is
+    uncorrelated with the reference even though each partial is individually
+    correct. Beat-quantised sections move the origins, which is why
+    beat-quantised material collapsed while fixed-window material did not.
+
+    The origin is known on both sides here, so the phase is re-referenced once,
+    at build time, and the renderer stays a plain section-local renderer.
+    """
+    origin = p.get("phase_origin")
+    if origin is None:
+        return p
+    q = dict(p)
+    f = float(p.get("frequency", 0.0))
+    delta = float(origin) - float(section_start)
+    if p.get("model") == "glide" and p.get("trajectory"):
+        # A glide's phase is integral + 2*pi*(f_ref - f_guess)*t, so the
+        # origin shift rides on the (f_ref - f_guess) term, not on f.
+        anchor = float(p.get("phase_ref_hz", 0.0))
+        shift = 2.0 * np.pi * (f - anchor) * delta
+    else:
+        shift = 2.0 * np.pi * f * delta
+    q["phase"] = round(float(p.get("phase", 0.0)) + shift, 6)
+    return q
+
+
+def _provenance(
+    input_audio_path: Any,
+    sr: int,
+    window_s: float,
+    max_duration: float,
+) -> Dict[str, Any]:
+    """The citation for the numbers in this ledger.
+
+    A correlation without the fixture it was measured on is not a result,
+    it is an anecdote. This block records which bytes were analysed (the
+    SHA-256 of the source file), the analysis parameters, and the engine
+    revision, so any figure quoted from the ledger can be reproduced
+    against the same input.
+    """
+    import hashlib
+    import subprocess
+
+    prov: Dict[str, Any] = {
+        "sha256": None,
+        "bytes": None,
+        "sr": sr,
+        "window_s": window_s,
+        "max_duration": max_duration,
+        "git_commit": None,
+        "git_dirty": None,
+    }
+    try:
+        p = Path(str(input_audio_path))
+        if p.is_file():
+            h = hashlib.sha256()
+            with p.open("rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            prov["sha256"] = h.hexdigest()
+            prov["bytes"] = p.stat().st_size
+    except Exception:
+        pass
+    try:
+        def _git(*args: str) -> str:
+            return subprocess.run(
+                ["git", *args], cwd=str(Path(__file__).resolve().parents[1]),
+                capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+
+        prov["git_commit"] = _git("rev-parse", "HEAD") or None
+        prov["git_dirty"] = bool(_git("status", "--porcelain"))
+    except Exception:
+        pass
+    return prov
+
+
 def build_evidence(
     input_audio_path: Union[str, Path, np.ndarray],
     output_dir: str,
@@ -520,10 +608,22 @@ def build_evidence(
         if w_end - w_start < min_span_samples:
             continue
         lo, hi = w_start / sr, w_end / sr
-        sec_partials = [
-            p for p in partials
-            if lo - 1e-9 <= float(p.get("envelope_t0", 0.0)) < hi
-        ]
+        # A partial belongs to every section it SOUNDS in, not only the one
+        # where its envelope starts. Assigning by envelope_t0 alone truncated
+        # a partial at the first section boundary it crossed, so every later
+        # section lost the model for the tone that was filling it: a section
+        # covering 2.74-5.25 s received no model at all for the 196 Hz tone
+        # that ran through it, because the partial modelling that tone was
+        # fitted in the 2.5 s analysis window and started before the section
+        # did. The ledger then reported that section as 0.96 correlated while
+        # its partials actually rendered to 0.40.
+        sec_partials = []
+        for p in partials:
+            p_start = float(p.get("start_time", p.get("envelope_t0", 0.0)))
+            p_end = float(p.get("end_time", p.get("envelope_t0", 0.0)))
+            if p_end <= lo or p_start >= hi:
+                continue
+            sec_partials.append(_rephase_to_section(p, lo))
         sec_y = y[w_start:w_end]
         sec_r = result["sinusoid_audio"][w_start:w_end]
         metrics = compute_error_metrics(sec_y, sec_r, sr=sr)
@@ -531,6 +631,7 @@ def build_evidence(
             "start": round(lo, 3),
             "end": round(hi, 3),
             "start_sample": int(w_start),
+            "end_sample": int(w_end),
             "partial_count": len(sec_partials),
             "partials": sec_partials,
             "hypothesis_bank": [],
@@ -551,6 +652,7 @@ def build_evidence(
     ledger: Dict[str, Any] = {
         "schema": "res/1.1",
         "source": str(input_audio_path),
+        "provenance": _provenance(input_audio_path, sr, window_s, max_duration),
         "sample_rate": sr,
         "duration": round(n / sr, 3),
         "n_samples": int(n),

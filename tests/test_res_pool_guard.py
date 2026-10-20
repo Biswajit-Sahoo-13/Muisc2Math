@@ -20,6 +20,12 @@ def _candidate_scripts():
     for p in ROOT.rglob("*.py"):
         if any(part in SKIP_DIRS for part in p.parts):
             continue
+        # Hidden/tooling trees (".venv", ".git", ".pytest_cache", ...) hold
+        # third-party sources, not repo scripts. A repo-local .venv is the
+        # modern default, so skipping every dotted directory keeps this
+        # invariant from failing on site-packages instead of on our code.
+        if any(part.startswith(".") for part in p.parts):
+            continue
         yield p
 
 

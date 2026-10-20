@@ -62,6 +62,19 @@ _WHISTLE_FREQ_HZ = 1000.0
 _MIN_DECAY_BASE = 2.5
 _MIN_DECAY_SLOPE = 0.002
 _MAX_GLIDE_HZ = 1800.0
+# The release fade is deliberately SHORTER than the analyser's 0.25 s fade.
+# The analyser (sinusoidal_model's inline support mask) holds a partial at a
+# clamped amplitude for hold_s past its last frame and then fades over 0.25 s;
+# the renderer deliberately refuses to ring that long, so a partial stops at
+# its support instead of trailing off (tests/test_res_whistle_suppression.py
+# asserts the fade stays <= 0.05 s and that the mask is exactly zero past
+# support_end + fade).
+#
+# The consequence is that the renderer is not a bit-exact replica of the
+# analyser: measured, the replica is 0.9906 on a full mix and 0.9962 on the
+# bass stem, and matching the analyser's 0.25 s fade would take it to
+# 0.9992 / 1.0000 - for a fidelity cost of about 0.001 correlation. The
+# 0.99 is the intended state, not drift.
 _RELEASE_FADE_S = 0.03
 _ZERO_DECAY_EPS = 1e-6
 _MIN_RING_S = 0.10
@@ -203,6 +216,77 @@ def _support_window(
     return (i0, i1)
 
 
+def fit_noise_floor_partial(
+      residual: np.ndarray,
+      sr: int,
+      start_time: float = 0.0,
+      end_time: float = 0.0,
+      seed: int = 20240617,
+      n_bands: int = 12,
+      f_lo: float = 200.0,
+) -> Optional[Dict[str, Any]]:
+    """Model a residual's broadband noise floor as one ``filtered_noise`` partial.
+
+    A bank of sinusoids cannot represent breath, consonants or cymbals. The
+    result is a sparse set of exponentials on a dead floor: the envelope
+    collapses between syllables (p95/p5 dynamic range measured at 160 dB for a
+    real voice against 40 dB for the source) and everything above 4 kHz is
+    missing (0.47% of the energy against 3.10% in the source). That is what
+    makes a reconstruction sound like a robot rather than a voice.
+
+    One seeded band-limited noise partial restores the floor. The seed is fixed
+    so the ledger stays reproducible and the export stays deterministic.
+    """
+    x = np.asarray(residual, dtype=np.float64).ravel()
+    if x.size < 512:
+        return None
+    n = x.size
+    w = np.hanning(n)
+    mag = np.abs(np.fft.rfft(x * w))
+    freqs = np.fft.rfftfreq(n, 1.0 / sr)
+    if freqs.size < 8:
+        return None
+
+    edges = np.geomspace(max(f_lo, 20.0), sr * 0.5, n_bands + 1)
+    centers: List[float] = []
+    mags: List[float] = []
+    for i in range(n_bands):
+        lo, hi = float(edges[i]), float(edges[i + 1])
+        sel = (freqs >= lo) & (freqs < hi)
+        if not np.any(sel):
+            continue
+        centers.append(float(np.sqrt(lo * hi)))
+        # median, not mean: robust to the tonal peaks still in the residual
+        mags.append(float(np.median(mag[sel])))
+    if len(centers) < 3:
+        return None
+
+    m = np.asarray(mags, dtype=np.float64)
+    peak = float(np.max(m))
+    if peak <= 0.0:
+        return None
+    m = m / peak
+    # keep only the floor, so we add noise rather than re-rendering the residual
+    m = np.maximum(m, float(np.percentile(m, 25)))
+
+    rms = float(np.sqrt(np.mean(x ** 2)))
+    if rms <= 1e-6:
+        return None
+    return {
+        "model": "filtered_noise",
+        "amplitude": round(rms, 6),
+        "seed": int(seed),
+        "band_centers": [round(c, 2) for c in centers],
+        "band_mags": [round(float(v), 6) for v in m],
+        "envelope_decay": 0.0,
+        "envelope_t0": float(start_time),
+        "start_time": float(start_time),
+        "end_time": float(end_time),
+        "phase": 0.0,
+        "frequency": 0.0,
+    }
+
+
 def _render_partial(
     p: Dict[str, Any],
     n: int,
@@ -245,7 +329,15 @@ def _render_partial(
             return np.zeros(n)
         a_env, integral = _glide_traj(tt, ff, aa, t)
         freq_ref = float(p.get("frequency", 0.0))
-        theta = integral + 2.0 * np.pi * (freq_ref - float(np.median(ff))) * t_fit
+        # The phase reference term must use the SAME anchor frequency the SMS
+        # engine projected against. Re-estimating it here (median of the
+        # smoothed trajectory) silently changes the term, and the phase error
+        # then grows with t instead of staying constant.
+        ref_hz = p.get("phase_ref_hz")
+        anchor = (
+            float(ref_hz) if ref_hz is not None else float(np.median(ff))
+        )
+        theta = integral + 2.0 * np.pi * (freq_ref - anchor) * t_fit
         gain = float(p.get("projection_gain", 1.0))
         ph = float(p.get("phase", 0.0))
         decay = float(p.get("envelope_decay", 0.0))
@@ -257,6 +349,14 @@ def _render_partial(
             sig = sig * _support_mask(
                 t, float(st), float(et), decay, amp, stft_half_window_s
             )
+        # The analyser renders each partial inside its own analysis window and
+        # pastes the result at the window's start, so the partial's ringing
+        # tail is clipped at the window's far edge. Without this clip the tail
+        # leaks into the next section, and the section-based render no longer
+        # reproduces what the analyser produced.
+        wend = p.get("window_end")
+        if wend is not None:
+            sig = np.where(t < float(wend), sig, 0.0)
         if win is not None:
             out = np.zeros(n)
             out[i0:i1] = sig
@@ -327,11 +427,21 @@ def _render_partial(
     f0 = float(p.get("frequency", 0.0))
     ph = float(p.get("phase", 0.0))
     env = amp * np.exp(-decay * np.maximum(t - t0, 0.0))
+    if p.get("unit_step"):
+        # One-sided model: no energy before the envelope's onset. The bank
+        # sets this on its hypotheses, whose support mask otherwise lets a
+        # half-window attack ramp carry a fast mode's energy before the hit.
+        env = np.where(t >= t0, env, 0.0)
     sig = env * np.cos(2.0 * np.pi * f0 * t_fit - ph)
     st = p.get("start_time", None)
     et = p.get("end_time", None)
     if st is not None and et is not None and amp > 0.0:
         sig = sig * _support_mask(t, float(st), float(et), decay, amp, stft_half_window_s)
+    # Clipped to the analysis window the partial was fitted in - see the
+    # glide branch above for why.
+    wend = p.get("window_end")
+    if wend is not None:
+        sig = np.where(t < float(wend), sig, 0.0)
     if win is not None:
         out = np.zeros(n)
         out[i0:i1] = sig
