@@ -74,10 +74,79 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          ASSETS=(dist/*.whl dist/*.tar.gz PROJECT_BUNDLE.md PROJECT_BUNDLE.zip)
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" --clobber "${ASSETS[@]}"
-          else
-            gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md "${ASSETS[@]}"
-          fi
-          gh release view "$TAG" --json tagName,name,url
+          python - <<'PY'
+          import json, os, pathlib, urllib.error, urllib.parse, urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["TAG"]
+          token = os.environ["GH_TOKEN"]
+          api = "https://api.github.com/repos/" + repo
+          base_headers = {"Authorization": "token " + token,
+                          "Accept": "application/vnd.github+json",
+                          "User-Agent": "m2m-release"}
+
+          def call(method, url, data=None, ctype="application/json"):
+              headers = dict(base_headers)
+              headers["Content-Type"] = ctype
+              req = urllib.request.Request(url, data=data, method=method,
+                                           headers=headers)
+              with urllib.request.urlopen(req, timeout=300) as resp:
+                  raw = resp.read()
+              return json.loads(raw) if raw else {}
+
+          notes = pathlib.Path("RELEASE_NOTES.md").read_text(encoding="utf-8")
+          try:
+              try:
+                  release = call("POST", api + "/releases", json.dumps({
+                      "tag_name": tag, "name": tag, "body": notes,
+                      "draft": False, "prerelease": False}).encode())
+                  print("created release", release["id"])
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 422:
+                      raise
+                  release = call("GET", api + "/releases/tags/" + tag)
+                  print("release already exists", release["id"])
+
+              upload = ("https://uploads.github.com/repos/%s/releases/%d/assets"
+                        % (repo, release["id"]))
+              files = sorted(p for p in pathlib.Path("dist").glob("*") if p.is_file())
+              files += [p for p in (pathlib.Path("PROJECT_BUNDLE.md"),
+                                    pathlib.Path("PROJECT_BUNDLE.zip")) if p.is_file()]
+              if not files:
+                  raise SystemExit("no artefacts to publish")
+              for path in files:
+                  for asset in release.get("assets", []):
+                      if asset["name"] == path.name:
+                          call("DELETE", api + "/releases/assets/" + str(asset["id"]))
+                  payload = path.read_bytes()
+                  req = urllib.request.Request(
+                      upload + "?name=" + urllib.parse.quote(path.name),
+                      data=payload, method="POST",
+                      headers={"Authorization": "token " + token,
+                               "Accept": "application/vnd.github+json",
+                               "User-Agent": "m2m-release",
+                               "Content-Type": "application/octet-stream"})
+                  with urllib.request.urlopen(req, timeout=300) as resp:
+                      print("uploaded", path.name, len(payload), "bytes")
+              final = call("GET", api + "/releases/tags/" + tag)
+              print("release url:", final["html_url"])
+              for asset in final.get("assets", []):
+                  print("  asset", asset["name"], asset["size"], "bytes")
+          except Exception as exc:
+              detail = ("%s: %s" % (type(exc).__name__, exc))[:130]
+              body = json.dumps({"state": "failure", "description": detail,
+                                 "context": "release"}).encode()
+              req = urllib.request.Request(
+                  "https://api.github.com/repos/%s/statuses/%s"
+                  % (repo, os.environ["GITHUB_SHA"]),
+                  data=body, method="POST",
+                  headers={"Authorization": "token " + token,
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "m2m-release",
+                           "Content-Type": "application/json"})
+              try:
+                  urllib.request.urlopen(req, timeout=30).read()
+              except Exception:
+                  pass
+              raise
+          PY
