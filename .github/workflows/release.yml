@@ -111,7 +111,9 @@ jobs:
                         % (repo, release["id"]))
               files = sorted(p for p in pathlib.Path("dist").glob("*") if p.is_file())
               files += [p for p in (pathlib.Path("PROJECT_BUNDLE.md"),
-                                    pathlib.Path("PROJECT_BUNDLE.zip")) if p.is_file()]
+                                    pathlib.Path("PROJECT_BUNDLE.zip"),
+                                    pathlib.Path("docs/AGENT_PROMPT_PHYSICS_ARCHITECTURE.md"))
+                        if p.is_file()]
               if not files:
                   raise SystemExit("no artefacts to publish")
               for path in files:

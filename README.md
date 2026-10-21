@@ -30,6 +30,7 @@
   - [Multi-Stage Alignment Pipeline](#multi-stage-alignment-pipeline)
   - [Energy Guard and Objective Function Constraints](#energy-guard-and-objective-function-constraints)
 - [Reverse Engineering and Synthesis (RES) Engine](#reverse-engineering-and-synthesis-res-engine)
+- [Handing this project to an AI agent](#handing-this-project-to-an-ai-agent)
 - [Quickstart Guide](#quickstart-guide)
   - [1. Interactive Web Studio](#1-interactive-web-studio)
   - [2. Sample tests and provenance](#2-sample-tests-and-provenance)
@@ -289,6 +290,26 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 - **Log-Spectral Distance (LSD) Referee Metric:** Balances time-domain correlation with spectral fidelity, prioritizing auditory timbre matching over microsecond phase jitter.
 
 > **Which of these actually run.** The OLA seam smoother, the Hilbert phase alignment and the clustered joint refinement are all implemented and unit-tested, but the production render path does not call them (`render_ledger(..., ola=False)` at every production call site), so they contribute nothing to a shipped reconstruction. The LPC noise class is likewise opt-in: it is reached only with `--noise`, and its gate is calibrated on measurement rather than on the SFM threshold this list implies — whole-spectrum SFM is ~0 on real residuals and can never be the primary trigger, so the zero-crossing rate carries the gate. `docs/res_research.md` § Phase 7 records which claims are live and which are not.
+
+---
+
+## Handing this project to an AI agent
+
+`docs/AGENT_PROMPT_PHYSICS_ARCHITECTURE.md` is a long, self-contained
+prompt for an agent that should improve the physics or the architecture of
+this engine. It states the measured numbers with their provenance, the
+rules that keep a published number defensible, the history of the
+project's one great bug, and a ranked menu of the changes the evidence
+actually points at.
+
+To use it: attach **`PROJECT_BUNDLE.md`** — one file containing ten
+repository files in reading order, with a navigation header — and paste the
+prompt. The agent needs nothing else to start. `PROJECT_BUNDLE.zip` holds
+the same files separately, and `tools/build_project_bundle.py` regenerates
+both so the bundle cannot drift from the source it quotes.
+
+The bundle is also published with each release, so it can be downloaded
+instead of built.
 
 ---
 
