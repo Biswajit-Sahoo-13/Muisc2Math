@@ -378,18 +378,29 @@ def _section_update(
         f0 = float(p.get("frequency", 0.0))
         lam0 = float(p.get("envelope_decay", 0.0))
 
+        st_p = p.get("start_time", None)
+        et_p = p.get("end_time", None)
+        # The envelope and the support mask do not depend on the frequency, so
+        # they are computed once per decay and reused across the frequency
+        # search. The frequency search evaluates the projection ~20 times per
+        # partial, and the support mask is a full-length comparison, so
+        # rebuilding it every time dominated the loop.
+        _env_cache: Dict[float, np.ndarray] = {}
+
         def basis(freq: float, decay: float) -> Tuple[np.ndarray, np.ndarray]:
-            env = np.exp(-decay * np.maximum(t - t0, 0.0))
+            key = round(float(decay), 12)
+            em = _env_cache.get(key)
+            if em is None:
+                env = np.exp(-decay * np.maximum(t - t0, 0.0))
+                if st_p is not None and et_p is not None:
+                    env = env * _support_mask(
+                        t, float(st_p), float(et_p), decay, 1.0,
+                        stft_half_window_s,
+                    )
+                em = env
+                _env_cache[key] = em
             ang = 2.0 * np.pi * freq * t_fit
-            sig_c, sig_s = env * np.cos(ang), env * np.sin(ang)
-            st_p = p.get("start_time", None)
-            et_p = p.get("end_time", None)
-            if st_p is not None and et_p is not None:
-                m = _support_mask(
-                    t, float(st_p), float(et_p), decay, 1.0, stft_half_window_s
-                )
-                sig_c, sig_s = sig_c * m, sig_s * m
-            return sig_c, sig_s
+            return em * np.cos(ang), em * np.sin(ang)
 
         def project(freq: float, decay: float) -> Tuple[float, float, float]:
             c, s = basis(freq, decay)
@@ -432,19 +443,27 @@ def _section_update(
         if finite:
             best_lam = min(finite)[2]
             try:
-                res = minimize_scalar(
+                # Same main-lobe-safe search the analyser uses: a bounded
+                # Brent over a +-2 Hz bracket starts its probes outside the
+                # projection main lobe of a sustained partial and can slide
+                # into the first sidelobe, losing most of the amplitude.
+                st_p = p.get("start_time", None)
+                et_p = p.get("end_time", None)
+                if st_p is not None and et_p is not None:
+                    t_support = max(0.0, float(et_p) - float(st_p))
+                else:
+                    t_support = float(y_sec.size) / float(sr)
+                f_refined = _main_lobe_refine(
                     lambda fv: project(fv, best_lam)[2],
-                    bounds=(f0 - 2.0, f0 + 2.0), method="bounded",
+                    f0, sr, t_support, tol_hz=2.0,
                 )
-                if res.success:
-                    a, ph, err = project(float(res.x), best_lam)
-                    f_low, f_hi = f0 - 2.0, f0 + 2.0
-                    if (
-                        f_low > 10.0 and f_hi < sr / 2.0 - 1.0
-                        and np.isfinite(a) and np.isfinite(ph)
-                        and np.isfinite(err) and a <= a_bound
-                    ):
-                        candidates.append((err, float(res.x), best_lam, a, ph))
+                a, ph, err = project(f_refined, best_lam)
+                if (
+                    f_refined > 10.0 and f_refined < sr / 2.0 - 1.0
+                    and np.isfinite(a) and np.isfinite(ph)
+                    and np.isfinite(err) and a <= a_bound
+                ):
+                    candidates.append((err, f_refined, best_lam, a, ph))
             except Exception:
                 pass
 

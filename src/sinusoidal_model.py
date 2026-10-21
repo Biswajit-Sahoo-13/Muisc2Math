@@ -29,6 +29,7 @@ import os
 
 import numpy as np
 import librosa
+from scipy.optimize import minimize_scalar
 
 from src.tracking import SinusoidalTrack, track_sinusoids
 
@@ -48,6 +49,42 @@ def _interp_track(
     return np.interp(t_samples, frame_times, values).astype(np.float64)
 
 
+def _quadratic_phase_correction(
+    t_samples: np.ndarray,
+    frame_times: np.ndarray,
+    f_smooth: np.ndarray,
+) -> np.ndarray:
+    """The gap between the exact and the trapezoidal intra-frame phase.
+
+    Between frame k and k+1 the frequency is assumed to ramp linearly, so
+    the exact phase is
+
+        theta(t) = theta_k + 2*pi*(f_k*u*dt + df*u^2*dt/2),  u = (t-t_k)/dt
+
+    while the trapezoidal integral (what the frame values hold) gives
+    ``theta_k + 2*pi*dt*u*(f_k + f_{k+1})/2``. The difference is
+
+        -pi * u*(1-u) * df * dt
+
+    which vanishes identically at every frame node and outside the measured
+    span, so applying it cannot move a frame boundary and cannot introduce a
+    discontinuity. Without it the phase error inside a frame grows with the
+    frame's frequency slope, which is what makes a fast vibrato smear.
+    """
+    if frame_times.size < 2 or t_samples.size == 0:
+        return np.zeros(t_samples.shape, dtype=np.float64)
+    idx = np.clip(
+        np.searchsorted(frame_times, t_samples, side="right") - 1,
+        0, frame_times.size - 2,
+    )
+    t0 = frame_times[idx]
+    t1 = frame_times[idx + 1]
+    dt = np.maximum(t1 - t0, 1e-12)
+    u = np.clip((t_samples - t0) / dt, 0.0, 1.0)
+    df = f_smooth[idx + 1] - f_smooth[idx]
+    return -np.pi * u * (1.0 - u) * df * dt
+
+
 def _smooth_envelope(values: np.ndarray, width: int = 5) -> np.ndarray:
     """Median-smooth a per-frame amplitude trajectory.
 
@@ -62,6 +99,77 @@ def _smooth_envelope(values: np.ndarray, width: int = 5) -> np.ndarray:
     padded = np.pad(values, pad, mode="edge")
     windows = np.lib.stride_tricks.sliding_window_view(padded, width)
     return np.median(windows, axis=-1)
+
+
+def _main_lobe_refine(
+    objective: Any,
+    f_center: float,
+    sr: int,
+    t_support: float,
+    tol_hz: float = 2.0,
+) -> float:
+    """Refine a scalar frequency without leaving the projection main lobe.
+
+    The projection objective of a partial sustained for T seconds is
+    ``1 - D^2(df*T)`` with D the Dirichlet kernel. Its main lobe is only
+    ``1/T`` wide and its first sidelobe minimum sits at ``1.4303/T``. A
+    bounded Brent search over a wide bracket starts its probes *outside* the
+    main lobe - scipy's first probes land at ``f_guess +- 0.4721 Hz`` for a
+    2 s bracket - so it can slide into the sidelobe and lose most of the
+    partial's amplitude. Measured: ``refine_track(220.098 Hz)`` returned
+    ``220.5722 Hz`` with ``projection_gain`` 0.2174, i.e. 78.3% of the
+    amplitude gone.
+
+    So: locate the basin on a grid fine enough to resolve the main lobe
+    (spacing at most ``0.40/T``), then search only inside the convex
+    main-lobe interval around the best grid point, and accept the result
+    only if the objective actually improved. Short transients keep the
+    original single-pass search - their main lobe is wide, so the sidelobe
+    is not within reach.
+    """
+    if t_support > 0.80:
+        inv_t = 1.0 / t_support
+        delta = min(inv_t, tol_hz)
+        lo, hi = f_center - delta, f_center + delta
+        if lo > 10.0 and hi < sr / 2.0 - 1.0:
+            # Inside the main lobe the objective 1 - D^2(df*T) has a single
+            # minimum at df = 0, so a bounded search restricted to the lobe is
+            # unimodal and cannot reach a sidelobe. scipy's probes then land
+            # inside the lobe too, which is what a wide bracket broke.
+            best_val = objective(f_center)
+            res = minimize_scalar(
+                objective, bounds=(lo, hi), method="bounded"
+            )
+            if res.success and float(res.fun) < best_val:
+                return float(res.x)
+        # The estimate was not inside the lobe, or the restricted search did
+        # not help: locate the basin on a grid fine enough to resolve the
+        # main lobe (spacing at most 0.40/T) and search inside that.
+        half = min(tol_hz, max(0.30, 2.0 * inv_t))
+        step = min(0.40 * inv_t, half)
+        n = max(1, int(np.ceil(half / step)))
+        grid = f_center + np.arange(-n, n + 1) * step
+        vals = [objective(float(f)) for f in grid]
+        i = int(np.argmin(vals))
+        f_best = float(grid[i])
+        best_val = float(vals[i])
+        delta = min(inv_t, tol_hz)
+        lo, hi = f_best - delta, f_best + delta
+        if lo > 10.0 and hi < sr / 2.0 - 1.0:
+            res = minimize_scalar(
+                objective, bounds=(lo, hi), method="bounded"
+            )
+            if res.success and float(res.fun) < best_val:
+                return float(res.x)
+        return f_best
+
+    lo = f_center - tol_hz
+    hi = f_center + tol_hz
+    if lo > 10.0 and hi < sr / 2.0 - 1.0:
+        res = minimize_scalar(objective, bounds=(lo, hi), method="bounded")
+        if res.success:
+            return float(res.x)
+    return f_center
 
 
 def _analytic_envelope(
@@ -125,8 +233,17 @@ def _prepare_frames(track: SinusoidalTrack) -> Tuple[np.ndarray, ...]:
     med_f = float(np.median(freqs)) if freqs.size else 0.0
     if freqs.size:
         # Phase 6: Allow wide pitch glides/vibrato (up to 35% of fundamental or 25 Hz)
-        # instead of the legacy 2.0 Hz clamp which destroyed 808 pitch glides
-        keep = np.abs(freqs - med_f) <= max(25.0, 0.35 * med_f)
+        # instead of the legacy 2.0 Hz clamp which destroyed 808 pitch glides.
+        #
+        # The reference must be the LOCAL trend, not the static track median.
+        # A continuous sweep has no single representative frequency, so a
+        # static reference deletes its endpoints: measured on a 200 -> 600 Hz
+        # sweep over 2.5 s, the static band kept only [0.348, 2.055] s of the
+        # span and 255.7-528.8 Hz of the excursion, throwing away 28.8% of the
+        # frames. A short running median rejects single-frame STFT spikes
+        # while following the sweep through.
+        f_loc = _smooth_envelope(freqs, 5)
+        keep = np.abs(freqs - f_loc) <= np.maximum(25.0, 0.35 * f_loc)
         if int(np.count_nonzero(keep)) >= 2:
             times, freqs = times[keep], freqs[keep]
             amps, phases = amps[keep], phases[keep]
@@ -144,7 +261,8 @@ def _trajectories(
     normalize_amp: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (amplitude, integral, frequency) trajectories on the sample grid."""
-    f_traj = _interp_track(times, _smooth_envelope(freqs * freq_scale, 9), n_samples, sr)
+    f_traj = _interp_track(times, _smooth_envelope(freqs * freq_scale, 3),
+                           n_samples, sr)
     amp_env = _smooth_envelope(amps)
     if normalize_amp:
         peak = float(np.max(amp_env))
@@ -153,11 +271,21 @@ def _trajectories(
     a_traj = _interp_track(times, amp_env, n_samples, sr)
     integral_frames = np.zeros(times.size, dtype=np.float64)
     if times.size > 1:
-        f_smooth = _smooth_envelope(freqs * freq_scale, 9)
+        # A 3-frame median, not 9: 9 frames span 104.5 ms, which is 1.25x the
+        # half period of a 6 Hz vibrato, so a 9-frame median removes 36.3% of the
+        # excursion (measured 20.00 Hz -> 12.74 Hz) and leaves the upper
+        # harmonics untrackable. Three frames span 34.8 ms, well inside the
+        # vibrato half period.
+        f_smooth = _smooth_envelope(freqs * freq_scale, 3)
         integral_frames[1:] = np.cumsum(
             2.0 * np.pi * 0.5 * (f_smooth[:-1] + f_smooth[1:]) * np.diff(times)
         )
     integral = _interp_track(times, integral_frames, n_samples, sr)
+    if times.size > 1:
+        t_samples = np.arange(n_samples, dtype=np.float64) / sr
+        integral = integral + _quadratic_phase_correction(
+            t_samples, times, f_smooth
+        )
     return a_traj, integral, f_traj
 
 
@@ -330,21 +458,17 @@ def refine_track(
 
     best_f = f_guess
     if refine_frequency:
-        from scipy.optimize import minimize_scalar
+        def objective(f: float) -> float:
+            return project(f)[0]
 
-        lo = f_guess - abs(freq_tolerance_hz)
-        hi = f_guess + abs(freq_tolerance_hz)
-        if lo > 10.0 and hi < sr / 2.0 - 1.0:
-
-            def objective(f: float) -> float:
-                return project(f)[0]
-
-            try:
-                res = minimize_scalar(objective, bounds=(lo, hi), method="bounded")
-                if res.success:
-                    best_f = float(res.x)
-            except Exception:
-                best_f = f_guess
+        try:
+            t_support = (end - start) / float(sr)
+            best_f = _main_lobe_refine(
+                objective, f_guess, sr, t_support,
+                tol_hz=abs(freq_tolerance_hz),
+            )
+        except Exception:
+            best_f = f_guess
 
     _, c_coef, s_coef, sig = project(best_f)
     coeff = float(np.hypot(c_coef, s_coef))
@@ -706,6 +830,169 @@ def _reconstruction_windowed(
     }
 
 
+def _harmonic_glide_track(
+    base_track: SinusoidalTrack,
+    base_params: Dict[str, Any],
+    harmonic: int,
+    track_id: int,
+) -> Optional[SinusoidalTrack]:
+    """Build the phase-locked harmonic ``harmonic`` of a base glide track.
+
+    A glide's spectral ridge is smeared by the modulation, and the smearing
+    produces "caustic" fragments at *fixed* frequencies inside the swept
+    corridor: those are the modulated partial seen at the stationary points
+    of its phase, not independent partials. The clean model is the harmonic
+    itself, whose instantaneous frequency is ``m`` times the fundamental's,
+    because a modulation of the fundamental scales its depth by ``m``.
+    """
+    traj = base_params.get("trajectory")
+    if not traj:
+        return None
+    times = [float(v) for v in traj["t"]]
+    freqs = [float(v) for v in traj["f_hz"]]
+    amps = [float(v) for v in traj["a"]]
+    if len(times) < 3 or len(freqs) != len(times) or len(amps) != len(times):
+        return None
+    out = SinusoidalTrack(
+        track_id,
+        int(base_track.frame_indices[0]) if base_track.frame_indices else 0,
+        {
+            "frequency": freqs[0] * harmonic,
+            "amplitude": amps[0],
+            "phase": 0.0,
+        },
+        times[0],
+    )
+    out.times = list(times)
+    out.frequencies = [f * harmonic for f in freqs]
+    out.amplitudes = list(amps)
+    out.phases = [0.0] * len(times)
+    out.frame_indices = list(base_track.frame_indices)
+    return out
+
+
+def _in_glide_corridor(
+    params: Dict[str, Any],
+    base_params: Dict[str, Any],
+    max_duration_ratio: float = 0.5,
+) -> bool:
+    """Is ``params`` a short fragment inside ``base_params``'s swept corridor?"""
+    if params.get("model") == "glide":
+        return False
+    traj = base_params.get("trajectory")
+    if not traj:
+        return False
+    f_lo = float(min(traj["f_hz"]))
+    f_hi = float(max(traj["f_hz"]))
+    if f_hi - f_lo <= 1.0:
+        return False
+    f = float(params.get("frequency", 0.0))
+    if not (f_lo <= f <= f_hi):
+        return False
+    t0 = float(params.get("start_time", 0.0))
+    t1 = float(params.get("end_time", 0.0))
+    b0 = float(traj["t"][0])
+    b1 = float(traj["t"][-1])
+    if b1 - b0 <= 0.0:
+        return False
+    if t0 < b0 - 1e-9 or t1 > b1 + 1e-9:
+        return False
+    return (t1 - t0) <= max_duration_ratio * (b1 - b0)
+
+
+def _expand_harmonic_glides(
+    accepted: List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]],
+    residual: np.ndarray,
+    sr: int,
+    min_energy_drop: float,
+    stft_half_window_s: float,
+    glide_tolerance_hz: float,
+    max_harmonic: int = 10,
+    max_fundamental_hz: float = 1200.0,
+) -> Tuple[
+    List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]], int, int
+]:
+    """Nominate harmonic glides and shadow the caustics they explain.
+
+    Returns the extended acceptance list, the number of accepted harmonic
+    glides and the number of shadowed caustic fragments.
+    """
+    nyquist = sr / 2.0
+    glides = [
+        (tr, pr)
+        for tr, pr, _, _ in accepted
+        if pr.get("model") == "glide" and pr.get("trajectory")
+    ]
+    if not glides:
+        return accepted, 0, 0
+
+    next_id = 1 + max((int(t.track_id) for t, _, _, _ in accepted), default=0)
+    candidates: List[Tuple[SinusoidalTrack, int, SinusoidalTrack]] = []
+    for base_track, base_params in glides:
+        base_f = float(base_params.get("frequency", 0.0))
+        if base_f <= 0.0 or base_f > max_fundamental_hz:
+            continue
+        f_max = float(max(base_params["trajectory"]["f_hz"]))
+        for m in range(2, max_harmonic + 1):
+            if m * f_max > 0.95 * nyquist:
+                break
+            cand = _harmonic_glide_track(base_track, base_params, m, next_id)
+            if cand is None:
+                continue
+            next_id += 1
+            candidates.append((base_track, m, cand))
+    if not candidates:
+        return accepted, 0, 0
+
+    scored: List[Tuple[float, int, SinusoidalTrack, Dict[str, Any], np.ndarray]] = []
+    for base_track, m, cand in candidates:
+        try:
+            sig, params = refine_track(
+                cand, residual, sr, refine_frequency=True,
+                stft_half_window_s=stft_half_window_s,
+                glide_tolerance_hz=glide_tolerance_hz,
+            )
+        except Exception:
+            continue
+        energy_before = float(np.sum(residual ** 2))
+        energy_after = float(np.sum((residual - sig) ** 2))
+        if energy_after <= energy_before - min_energy_drop:
+            scored.append((energy_before - energy_after, m, cand, params, sig))
+    scored.sort(key=lambda item: -item[0])
+
+    harmonics_accepted = 0
+    harmonic_bases: List[Dict[str, Any]] = []
+    for _, m, cand, params, sig in scored:
+        try:
+            sig, params = refine_track(
+                cand, residual, sr, refine_frequency=True,
+                stft_half_window_s=stft_half_window_s,
+                glide_tolerance_hz=glide_tolerance_hz,
+            )
+        except Exception:
+            continue
+        energy_before = float(np.sum(residual ** 2))
+        residual = residual - sig
+        energy_after = float(np.sum(residual ** 2))
+        if energy_after > energy_before - min_energy_drop:
+            residual = residual + sig
+            continue
+        accepted.append((cand, params, sig, energy_after))
+        harmonics_accepted += 1
+        harmonic_bases.append(params)
+
+    shadowed = 0
+    kept: List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]] = []
+    for tr, pr, sg, en in accepted:
+        if pr.get("model") != "glide" and any(
+            _in_glide_corridor(pr, bp) for bp in harmonic_bases
+        ):
+            shadowed += 1
+            continue
+        kept.append((tr, pr, sg, en))
+    return kept, harmonics_accepted, shadowed
+
+
 def sinusoidal_reconstruction(
     y: np.ndarray,
     sr: int,
@@ -806,11 +1093,28 @@ def sinusoidal_reconstruction(
         accepted.append((track, params, sig, energy_after))
 
     accepted.sort(key=lambda item: item[3])
+
+    # A glide's ridge is smeared by its own modulation, and the smearing
+    # breaks the ridge into fixed-frequency caustic fragments inside the
+    # swept corridor. Those fragments are not independent partials, so a
+    # plain OMP over the smeared ridge either accepts a swarm of them or
+    # accepts none and loses the partial. Model the harmonic instead: its
+    # instantaneous frequency is m times the fundamental's, and it explains
+    # the smeared energy in one piece. The caustics it explains are then
+    # shadowed.
+    accepted, harmonics_accepted, shadowed = _expand_harmonic_glides(
+        accepted, residual, sr, min_energy_drop,
+        stft_half_window_s=(n_fft / 2.0) / sr,
+        glide_tolerance_hz=glide_tolerance_hz,
+    )
+    pruned += shadowed
+
     accepted_tracks: List[SinusoidalTrack] = []
     for track, params, sig, _ in accepted:
         sin_audio += sig
         fitted.append(params)
         accepted_tracks.append(track)
+
 
     noise_audio = np.zeros(n_samples, dtype=np.float64)
     noise_meta: Dict[str, Any] = {"enabled": False}

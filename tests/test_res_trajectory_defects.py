@@ -23,13 +23,15 @@ docstrings are the measured ones, not projections.
       refine_track(220.098 Hz) returns 220.5722 Hz with projection_gain
       0.2174 and 78.3% of the partial's amplitude lost.
 
-Each defect is marked ``xfail(strict=True)``. The suite therefore stays
-green, the defect stays pinned, and the moment a fix lands the test
-XPASSes and strict mode turns that into a failure - which is the signal to
-delete the marker.
+Three of the four defects are fixed and are now asserted as ordinary tests, so
+they cannot regress silently. The fourth - the caustic fragmentation of the
+upper vibrato harmonics - is still open and stays pinned by a single
+``xfail(strict=True)``: the suite is green, the defect stays visible, and the
+moment a fix lands the test XPASSes and strict mode turns that into a
+failure - the signal to delete the marker.
 
 The two trajectory-path invariants that already hold are asserted as
-ordinary tests, so they cannot regress silently.
+ordinary tests too.
 """
 from __future__ import annotations
 
@@ -107,17 +109,23 @@ def _sweep_signal(f0: float = 200.0, f1: float = 600.0, dur: float = 2.5):
 # D9 - the frequency median filter is longer than the vibrato half-period
 # ----------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "D9: the 9-frame (104.49 ms) median filter spans 1.25x the half period "
-    "of a 6 Hz vibrato and removes 36.3% of the excursion. Needs a shorter "
-    "filter (3 frames) or an intra-frame phase model."
-))
 def test_frequency_median_filter_preserves_vibrato_excursion() -> None:
+    """The engine's own frequency trajectory must keep the vibrato depth.
+
+    Measured on the 9-frame filter: 20.00 Hz -> 12.74 Hz, i.e. 36.3% of the
+    excursion gone, because 9 frames span 104.49 ms and a 6 Hz vibrato has an
+    83.33 ms half period. A 3-frame filter spans 34.8 ms and keeps 97.6%.
+    """
+    n = int(2.5 * SR)
     tt = np.arange(0, 2.5, HOP / SR)
     vib = VIBRATO_DEV * np.sin(2 * np.pi * VIBRATO_RATE * tt)
-    sm = _smooth_envelope(vib, 9)
-    kept = float(np.max(np.abs(sm))) / float(np.max(np.abs(vib)))
-    assert kept > 0.90, f"vibrato excursion retained only {kept:.3f} (measured 0.637)"
+    amps = np.full(tt.size, 0.5)
+    _a, _theta, f_traj = _trajectories(tt, vib, amps, n, SR)
+    kept = float(np.max(np.abs(f_traj))) / float(np.max(np.abs(vib)))
+    assert kept > 0.90, (
+        f"the engine's frequency trajectory retained only {kept:.3f} of the "
+        f"vibrato excursion (measured 0.637 on the 9-frame filter)"
+    )
 
 
 # ----------------------------------------------------------------------
@@ -162,24 +170,33 @@ def test_vibrato_harmonics_survive_without_caustic_fragmentation() -> None:
 # D11 - outlier rejection truncates wide linear sweeps
 # ----------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "D11: _prepare_frames references the static track median, so a 200->600 Hz "
-    "sweep keeps only [0.348, 2.055] s of its 2.5 s span and 255.7-528.8 Hz "
-    "of its 200-600 Hz excursion. Needs a local-trend reference."
-))
 def test_wide_linear_sweep_keeps_its_full_tracked_span() -> None:
+    """A 200 -> 600 Hz sweep must keep every frame the analyser can see.
+
+    The last analysable frame sits at (n - n_fft)/sr, so the swept frequency
+    it can reach is f0 + (f1-f0)*(n-n_fft)/(sr*dur) - not f1 itself. The
+    defect was that the static-median band deleted the sweep's endpoints:
+    only [0.348, 2.055] s of the 2.5 s span survived, i.e. 28.8% of the
+    frames and 200-600 Hz truncated to 255.7-528.8 Hz.
+    """
     y, frame_times, freqs = _sweep_signal()
     tr = _make_track(frame_times, freqs, np.full(freqs.size, 0.8),
                      np.zeros(freqs.size))
     times, fr, _amps, *_ = _prepare_frames(tr)
+
     assert float(times[0]) <= 0.05, (
         f"sweep starts at {times[0]:.4f} s instead of 0 s"
     )
-    assert float(times[-1]) >= 2.40, (
-        f"sweep ends at {times[-1]:.4f} s instead of ~2.5 s"
+    assert float(times[-1]) >= float(frame_times[-1]) - 1e-6, (
+        f"sweep ends at {times[-1]:.4f} s, short of the last analysable "
+        f"frame at {frame_times[-1]:.4f} s"
     )
-    assert float(fr[0]) <= 205.0 and float(fr[-1]) >= 595.0, (
-        f"sweep frequency span truncated to [{fr[0]:.1f}, {fr[-1]:.1f}] Hz"
+    assert float(fr[0]) <= float(freqs[0]) + 1.0, (
+        f"sweep frequency truncated at the start: {fr[0]:.1f} Hz"
+    )
+    assert float(fr[-1]) >= float(freqs[-1]) - 1.0, (
+        f"sweep frequency truncated at the end: {fr[-1]:.1f} Hz, short of "
+        f"the {freqs[-1]:.1f} Hz the last analysable frame carries"
     )
 
 
@@ -187,13 +204,6 @@ def test_wide_linear_sweep_keeps_its_full_tracked_span() -> None:
 # D12 - the bounded Brent search can leave the projection main lobe
 # ----------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "D12: for a 2.5 s sustained partial the projection main lobe is only "
-    "0.4000 Hz wide and the first sidelobe minimum is 0.5721 Hz away, while "
-    "scipy's first bounded probes land at f_guess +- 0.4721 Hz. Measured: "
-    "220.098 Hz -> 220.5722 Hz, projection_gain 0.2174, amplitude -78.3%. "
-    "Needs a main-lobe-bracketed search."
-))
 def test_sustained_partial_does_not_slide_into_the_first_sidelobe() -> None:
     dur = 2.5
     n = int(dur * SR)

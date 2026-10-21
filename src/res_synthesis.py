@@ -13,7 +13,7 @@ import numpy as np
 import scipy.signal
 from scipy.signal import hilbert
 
-from src.sinusoidal_model import _smooth_envelope
+from src.sinusoidal_model import _quadratic_phase_correction, _smooth_envelope
 from src.residual import compute_error_metrics, segmental_snr_db, onset_corr
 
 
@@ -38,16 +38,19 @@ def _glide_traj(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Amplitude + integrated-phase trajectories on an arbitrary global grid.
 
-    Exact replica of sinusoidal_model._trajectories (9-frame median-smoothed
-    frequency for the integral, 5-frame-smoothed amplitude), evaluated on
-    ``t`` so section-offset renders stay on the global time axis.
+    Exact replica of sinusoidal_model._trajectories (3-frame median-smoothed
+    frequency for the integral, 5-frame-smoothed amplitude, and the same
+    analytical intra-frame phase correction), evaluated on ``t`` so
+    section-offset renders stay on the global time axis. The two must stay
+    in lockstep: tests/test_res_trajectory_defects.py asserts they agree to
+    1e-11 rad across arbitrary section offsets.
     """
     if tt.size == 1:
         return (
             np.full(t.size, float(aa[0])),
             np.zeros(t.size),
         )
-    f_smooth = _smooth_envelope(ff, 9)
+    f_smooth = _smooth_envelope(ff, 3)
     a_frames = _smooth_envelope(aa)
     integral_frames = np.zeros(tt.size, dtype=np.float64)
     integral_frames[1:] = np.cumsum(
@@ -55,6 +58,7 @@ def _glide_traj(
     )
     a_env = np.interp(t, tt, a_frames)
     integral = np.interp(t, tt, integral_frames)
+    integral = integral + _quadratic_phase_correction(t, tt, f_smooth)
     return a_env, integral
 
 
