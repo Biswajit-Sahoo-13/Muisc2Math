@@ -76,6 +76,6 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" --clobber "${ASSETS[@]}"
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes "${ASSETS[@]}"
+            gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md "${ASSETS[@]}"
           fi
           gh release view "$TAG" --json tagName,name,url
