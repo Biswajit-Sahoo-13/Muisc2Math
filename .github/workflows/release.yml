@@ -61,10 +61,12 @@ jobs:
           python -m venv /tmp/releaseenv
           /tmp/releaseenv/bin/python -m pip install --upgrade pip
           /tmp/releaseenv/bin/pip install dist/*.whl
-          cd /tmp && /tmp/releaseenv/bin/python -c "import src.res_loop; print('imports ok')"
+          cd /tmp
+          # The import has to come from the installed package, not the checkout.
+          /tmp/releaseenv/bin/python -c "import src.res_loop; print('imported from', src.res_loop.__file__)"
           /tmp/releaseenv/bin/m2m --help > /dev/null
           /tmp/releaseenv/bin/m2m res \
-            -i data/output/_fixtures/stem_drums.wav \
+            -i "$GITHUB_WORKSPACE/data/output/_fixtures/stem_drums.wav" \
             -o /tmp/releaseout -d 3 --iterations 1
           test -f /tmp/releaseout/res_best.wav
       - name: Publish
