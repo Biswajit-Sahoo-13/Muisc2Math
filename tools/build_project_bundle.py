@@ -152,22 +152,36 @@ def _lang(rel):
     return "text"
 
 
+def _read(rel):
+    """Read a file with normalised line endings.
+
+    The bundle quotes source code, so it has to be byte-identical whichever
+    platform built it. A Windows checkout has CRLF in the working tree and a
+    Linux one has LF; without this the same commit produced two different
+    bundles.
+    """
+    return (ROOT / rel).read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
 parts = [HEADER]
 for i, (rel, role) in enumerate(FILES, 1):
     p = ROOT / rel
     if not p.exists():
         continue
-    n = len(p.read_text(encoding="utf-8").splitlines())
+    n = len(_read(rel).splitlines())
     parts.append(f"| {i} | `{rel}` | {n} lines | {role} |\n")
 parts.append("\n---\n\n# File contents\n")
 for i, (rel, _role) in enumerate(FILES, 1):
     p = ROOT / rel
     if not p.exists():
         continue
-    body = p.read_text(encoding="utf-8")
+    body = _read(rel)
     parts.append(f"\n---\n\n## File {i}: `{rel}`\n\n```{_lang(rel)}\n{body}\n```\n")
 
-OUT.write_text("".join(parts), encoding="utf-8")
+# newline="\n" so the bundle is byte-identical on every platform. Text mode
+# otherwise rewrites LF to CRLF on Windows, which made the same commit
+# produce two different bundles.
+OUT.write_text("".join(parts), encoding="utf-8", newline="\n")
 print(f"WROTE {OUT}")
 print(f"size  {OUT.stat().st_size:,} bytes")
 print(f"lines {len(''.join(parts).splitlines()):,}")
