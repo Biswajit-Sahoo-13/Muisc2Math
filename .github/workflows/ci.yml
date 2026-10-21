@@ -62,9 +62,11 @@ jobs:
       # visible without needing access to the runner logs.
       - name: Report the failure as a commit status
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python - <<'PY'
-          import json, os, re, urllib.request
+          import json, os, re, sys, traceback, urllib.request
           try:
               text = open("test-output.txt", encoding="utf-8", errors="replace").read()
           except OSError:
@@ -74,20 +76,25 @@ jobs:
               print("no failures to report")
               raise SystemExit(0)
           desc = " | ".join(re.sub(r" - .*", "", l) for l in fails[:6])[:130]
+          token = os.environ.get("GH_TOKEN", "")
+          if not token:
+              print("no token in the environment; cannot post a status")
+              raise SystemExit(0)
           body = json.dumps({"state": "failure", "description": desc,
                              "context": "pytest"}).encode()
           req = urllib.request.Request(
               "https://api.github.com/repos/%s/statuses/%s"
               % (os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]),
               data=body, method="POST",
-              headers={"Authorization": "token " + os.environ["GITHUB_TOKEN"],
+              headers={"Authorization": "token " + token,
                        "Accept": "application/vnd.github+json",
                        "Content-Type": "application/json"})
           try:
               urllib.request.urlopen(req, timeout=30).read()
               print("posted status:", desc)
           except Exception as exc:
-              print("status post failed:", exc)
+              print("status post failed:", repr(exc))
+              traceback.print_exc()
           print("::error::" + desc)
           PY
 
