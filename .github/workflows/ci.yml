@@ -186,6 +186,7 @@ jobs:
           python tools/build_project_bundle.py
           python - <<'PY'
           import re
+          import zipfile
           from pathlib import Path
           s = Path("PROJECT_BUNDLE.md").read_text(encoding="utf-8")
           files = re.findall(r"^## File \d+: `([^`]+)`", s, re.M)
@@ -194,5 +195,11 @@ jobs:
               assert f in s, f"bundle does not mention {f}"
           assert "What this project does" in s, "bundle lost its header"
           assert s.count("```") % 2 == 0, "unbalanced code fences"
-          print(f"bundle ok: {len(files)} files, {len(s):,} chars")
+          with zipfile.ZipFile("PROJECT_BUNDLE.zip") as zf:
+              names = set(zf.namelist())
+          assert "PROJECT_BUNDLE.md" in names, "the zip has no bundle in it"
+          for f in files:
+              assert f in names, f"the zip does not contain {f}"
+          print(f"bundle ok: {len(files)} files, {len(s):,} chars, "
+                f"{len(names)} zip entries")
           PY

@@ -5,9 +5,11 @@ Ten files, in reading order, with a navigation header. An unannotated dump of
 project shape, the measured numbers and the file index.
 """
 from pathlib import Path
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "PROJECT_BUNDLE.md"
+ZIP = ROOT / "PROJECT_BUNDLE.zip"
 
 FILES = [
     ("README.md",
@@ -169,3 +171,15 @@ OUT.write_text("".join(parts), encoding="utf-8")
 print(f"WROTE {OUT}")
 print(f"size  {OUT.stat().st_size:,} bytes")
 print(f"lines {len(''.join(parts).splitlines()):,}")
+
+# The zip carries the same files as the markdown, so the bundle can be taken
+# as one archive instead of the repository. The sdist already has the whole
+# source tree; this is the readable subset plus the bundle itself.
+with zipfile.ZipFile(ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.write(OUT, OUT.name)
+    for rel, _role in FILES:
+        p = ROOT / rel
+        if p.exists():
+            zf.write(p, rel)
+print(f"WROTE {ZIP}")
+print(f"size  {ZIP.stat().st_size:,} bytes")
