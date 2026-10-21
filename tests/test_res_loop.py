@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -65,8 +66,14 @@ def test_evidence_prompt_lists_sections_and_form(tmp_path):
     prompt = evidence_prompt(ledger)
     assert "section 0" in prompt
     assert "corr=" in prompt
-    assert "partial:" in prompt
     assert ledger["equation_form"] in prompt
+    # The prompt must carry the part ids the edit schema uses. The list is
+    # sorted by amplitude and truncated, so without the id a proposer can
+    # only guess which partial a line refers to.
+    ids = re.findall(r"part_(\d{3}):", prompt)
+    assert ids, "the prompt must show the part ids"
+    widest = max(len(s["partials"]) for s in ledger["sections"])
+    assert all(int(i) < widest for i in ids)
 
 
 def test_render_ledger_reproduces_chord(tmp_path):

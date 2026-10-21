@@ -1504,7 +1504,11 @@ def run_loop(
                 "Edits JSON array only: [{\"section\": int, \"id\": "
                 "\"part_###\", \"op\": \"refit_amplitude\"|\"refit_phase\"|"
                 "\"set_decay\"|\"set_frequency_offset\"|\"drop\", "
-                "\"value\": float}]. Improve weak sections below.\n\n"
+                "\"value\": float}]. Improve weak sections below. "
+                "Use the section number and the part_### id exactly as they "
+                "are printed below; a part id is only the id of that line, "
+                "not its position in the list. Answer with the JSON array "
+                "and nothing else.\n\n"
                 + _prompt_text(ledger)
             )
             edits, llm_receipt = llm_edits_with_receipt(

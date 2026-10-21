@@ -738,11 +738,17 @@ def evidence_prompt(ledger: Dict[str, Any], max_partials_per_section: int = 6) -
                 if accepted_hits else ""
             )
         )
-        for p in sorted(
-            s["partials"], key=lambda q: float(q.get("amplitude", 0.0)), reverse=True
+        for pid, p in sorted(
+            enumerate(s["partials"]),
+            key=lambda q: float(q[1].get("amplitude", 0.0)),
+            reverse=True,
         )[:max_partials_per_section]:
+            # The id is the index into the section's own partial list, which
+            # is what apply_edits resolves. The list below is sorted by
+            # amplitude and truncated, so without the id a reader cannot
+            # tell which partial a line refers to.
             lines.append(
-                f"   partial: "
+                f"   part_{pid:03d}: "
                 f"{float(p.get('amplitude', 0.0)):.4f} "
                 f"exp(-{float(p.get('envelope_decay', 0.0)):.3f}*(t-{float(p.get('envelope_t0', 0.0)):.3f})) "
                 f"cos(2pi*{float(p.get('frequency', 0.0)):.3f}*t - "
