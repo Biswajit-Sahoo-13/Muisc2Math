@@ -28,6 +28,13 @@ from src.synthesis import (
 )
 from src.analysis import load_audio
 from src.tracking import discover_equations_from_audio
+from src.llm_backends import (
+    BACKENDS,
+    auto_backend,
+    build_command,
+    probe_all,
+    run_backend,
+)
 from src.residual import (
     compute_error_metrics,
     iterative_residual_refinement,
@@ -453,6 +460,11 @@ def cmd_res(args: argparse.Namespace) -> None:
             provider=args.provider,
             llm_model=args.llm_model or None,
             llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
+            llm_backend=_llm_backend_for(args),
+            llm_timeout_s=args.llm_timeout,
+            llm_api_base_url=args.llm_base_url,
+            llm_api_key=args.llm_api_key or None,
+            llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
             min_gain=0.0,
             bank=not args.no_bank,
             spectral_lane=args.spectral_lane,
@@ -476,6 +488,11 @@ def cmd_res(args: argparse.Namespace) -> None:
                 provider=args.provider,
                 llm_model=args.llm_model or None,
                 llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
+                llm_backend=_llm_backend_for(args),
+                llm_timeout_s=args.llm_timeout,
+                llm_api_base_url=args.llm_base_url,
+                llm_api_key=args.llm_api_key or None,
+                llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
                 min_gain=args.min_gain,
                 stop_on_no_improvement=args.stop_on_no_improvement,
                 bank=not args.no_bank,
@@ -509,6 +526,11 @@ def cmd_res(args: argparse.Namespace) -> None:
             provider=args.provider,
             llm_model=args.llm_model or None,
             llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
+            llm_backend=_llm_backend_for(args),
+            llm_timeout_s=args.llm_timeout,
+            llm_api_base_url=args.llm_base_url,
+            llm_api_key=args.llm_api_key or None,
+            llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
             min_gain=args.min_gain,
             stop_on_no_improvement=args.stop_on_no_improvement,
             bank=not args.no_bank,
@@ -881,12 +903,92 @@ def cmd_run_all(args: argparse.Namespace) -> None:
     print("==================================================================")
 
 
+def _llm_backend_for(args: argparse.Namespace) -> str | None:
+    """Map ``--provider`` onto a backend name for the loop.
+
+    ``numeric`` means no LLM at all. ``auto`` lets the loop pick the first
+    usable backend, which it signals by passing None. Every other value is
+    a backend name, including ``api`` for the direct HTTP path.
+    """
+    provider = (getattr(args, "provider", "numeric") or "numeric").strip().lower()
+    if provider in ("numeric", "", "none"):
+        return None
+    if provider == "auto":
+        return None
+    return provider
+
+
+def cmd_llm_backends(args: argparse.Namespace) -> None:
+    """Report every LLM backend: installed, identified, and usable."""
+    rows = probe_all()
+    print("[*] LLM backends for the RES hypothesis provider")
+    print()
+    print("    %-10s %-9s %-10s %s" % ("backend", "installed", "usable", "version / reason"))
+    for row in rows:
+        print("    %-10s %-9s %-10s %s" % (
+            row["name"],
+            "yes" if row["installed"] else "no",
+            "yes" if row["usable"] else "no",
+            row.get("version") or row.get("reason") or "",
+        ))
+        if row["installed"] and not row["usable"]:
+            print("        %s" % (row.get("reason") or ""))
+            if row.get("auth_hint"):
+                print("        fix: %s" % row["auth_hint"])
+    if getattr(args, "check", False):
+        print()
+        print("[*] asking each installed backend for a trivial answer")
+        for row in rows:
+            if not row["installed"]:
+                continue
+            spec = BACKENDS.get(row["name"])
+            if spec is None:
+                continue
+            try:
+                argv = build_command(spec, "Reply with exactly: PROBE_OK")
+            except Exception as exc:
+                print("    %-10s cannot build a command: %s" % (row["name"], exc))
+                continue
+            res = run_backend(argv, timeout_s=90.0)
+            answered = "PROBE_OK" in ((res.stdout or "") + (res.stderr or ""))
+            print("    %-10s %s%s" % (
+                row["name"],
+                "answered" if answered else "no answer",
+                " (%.0fs)" % res.duration_s if res.duration_s else "",
+            ))
+            if not answered and res.error:
+                print("        error: %s" % res.error)
+            elif not answered and res.stderr:
+                print("        stderr: %s" % res.stderr.strip().splitlines()[0][:140])
+    picked = auto_backend()
+    print()
+    if picked:
+        print("[+] --provider auto would use: %s" % picked.name)
+    else:
+        print("[!] --provider auto would fail: no backend is installed")
+    print("    A CLI backend carries its own authentication, so the project")
+    print("    needs no API key. --provider api is the one path that does,")
+    print("    and it reads OPENAI_API_KEY.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="music2math",
         description="DSP-rigorous reverse engineering of audio into compact mathematical equations.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True, help="Sub-commands")
+
+    # llm-backends
+    p_llm = subparsers.add_parser(
+        "llm-backends",
+        help="Report which LLM backends the RES hypothesis provider can use",
+    )
+    p_llm.add_argument(
+        "--check", action="store_true",
+        help="Also send a trivial prompt to each installed backend, to prove "
+             "it answers rather than merely being on PATH",
+    )
+    p_llm.set_defaults(func=cmd_llm_backends)
 
     # benchmark
     p_bench = subparsers.add_parser("benchmark", help="Generate benchmark audio files with ground truth equations")
@@ -1057,15 +1159,43 @@ def main() -> None:
         help="Stop when best correlation reaches this (0 = never stop early)",
     )
     p_res.add_argument(
-        "--provider", choices=["numeric", "opencode"], default="numeric",
-        help="Hypothesis provider: numeric coordinate refit, or an LLM via "
-             "'opencode run' followed by the same numeric verification",
+        "--provider",
+        choices=["numeric", "auto", "api"] + list(BACKENDS.keys()),
+        default="numeric",
+        help="Hypothesis provider: 'numeric' (no LLM), 'auto' (the first "
+             "usable LLM CLI backend), 'api' (an OpenAI-compatible endpoint, "
+             "needs OPENAI_API_KEY), or the name of one backend - agy "
+             "(Antigravity), opencode, claude, gemini, qwen, codex, crush, "
+             "goose, amp, ollama. Every backend is followed by the same "
+             "numeric verification and referee scoring.",
     )
     p_res.add_argument("--llm-model", default="", help="Model id passed to the LLM provider (e.g. provider/model)")
     p_res.add_argument(
         "--llm-cmd", default="",
         help="Custom LLM command template; entries containing {prompt_file} "
              "get the prompt path. Command must print the edits JSON to stdout",
+    )
+    p_res.add_argument(
+        "--llm-timeout", type=float, default=300.0,
+        help="Seconds to allow one LLM call. The whole process tree is "
+             "killed when it expires, so a backend that spawns children "
+             "cannot hang the loop",
+    )
+    p_res.add_argument(
+        "--llm-extra-args", default="",
+        help="Extra arguments for the LLM backend, space separated. Some "
+             "agent CLIs need a permission flag to answer at all - for "
+             "example agy needs '--dangerously-skip-permissions' or a "
+             "permissions.allow rule, because it reaches for a tool",
+    )
+    p_res.add_argument(
+        "--llm-base-url", default="https://api.openai.com/v1",
+        help="Base URL for --provider api (any OpenAI-compatible endpoint)",
+    )
+    p_res.add_argument(
+        "--llm-api-key", default="",
+        help="API key for --provider api. Defaults to $OPENAI_API_KEY. The "
+             "CLI backends do not need one: they carry their own auth",
     )
     p_res.add_argument("--json", action="store_true", help="Print final summary as JSON")
     p_res.add_argument("--spectral-fill", type=float, default=0.0, help="Add deterministic shaped residual noise")

@@ -45,6 +45,8 @@ import numpy as np
 import soundfile as sf
 from scipy.optimize import minimize_scalar, least_squares
 
+from src.sinusoidal_model import _main_lobe_refine
+
 from src.res_synthesis import (
   _corr,
   _glide_traj,
@@ -61,11 +63,21 @@ from src.error_correction import (
     find_best_lag,
     apply_lag,
 )
+from src.llm_backends import (
+    BACKENDS,
+    RunResult,
+    auto_backend,
+    build_command,
+    find_backend,
+    run_api,
+    run_backend,
+)
 
 _PROVIDER_NOTE_ANTIGRAVITY = (
-    "Antigravity cannot be called headlessly from a script. Drive RES "
-    "in-session: run analysis/scoring yourself and supply edits to "
-    "apply_edits(); the loop verifies them the same way."
+    "Antigravity is callable headlessly: 'agy --print <prompt>' runs a "
+    "single prompt and prints the answer, so the RES loop can use it as a "
+    "proposer like any other CLI backend. The referee still scores every "
+    "iteration and the loop still rolls back what does not help."
 )
 
 
@@ -182,11 +194,27 @@ def apply_edits(ledger: Dict[str, Any], edits: Sequence[Dict[str, Any]]) -> int:
     ``part_###`` label of the partial. Unknown ids and malformed values are
     skipped silently - the caller's edit count is the honest receipt.
     """
+    applied, _refused = apply_edits_detailed(ledger, edits)
+    return applied
+
+
+def apply_edits_detailed(
+    ledger: Dict[str, Any], edits: Sequence[Dict[str, Any]]
+) -> Tuple[int, List[Dict[str, Any]]]:
+    """Apply agent edits and report what was refused as well as applied.
+
+    The refused list is the honest half of the receipt: a model that
+    proposed twelve edits of which nine named parts that do not exist
+    looks the same as a model that proposed three good ones if only the
+    applied count is recorded.
+    """
     n_applied = 0
+    refused: List[Dict[str, Any]] = []
     for e in edits:
         try:
             sec = ledger["sections"][int(e.get("section", -1))]
         except (IndexError, TypeError, ValueError, KeyError):
+            refused.append({"edit": e, "reason": "no such section"})
             continue
         pid = str(e.get("id", ""))
         idx = -1
@@ -196,12 +224,14 @@ def apply_edits(ledger: Dict[str, Any], edits: Sequence[Dict[str, Any]]) -> int:
             except ValueError:
                 idx = -1
         if not (0 <= idx < len(sec["partials"])):
+            refused.append({"edit": e, "reason": "no such partial"})
             continue
         target = sec["partials"][idx]
         op = e.get("op", "")
         try:
             value = float(e.get("value", 0.0))
         except (TypeError, ValueError):
+            refused.append({"edit": e, "reason": "value is not a number"})
             continue
         if op == "refit_amplitude":
             target["amplitude"] = round(max(value, 0.0), 6)
@@ -214,9 +244,10 @@ def apply_edits(ledger: Dict[str, Any], edits: Sequence[Dict[str, Any]]) -> int:
         elif op == "drop":
             target["amplitude"] = 0.0
         else:
+            refused.append({"edit": e, "reason": "unknown op %r" % (op,)})
             continue
         n_applied += 1
-    return n_applied
+    return n_applied, refused
 
 
 def _section_update(
@@ -473,33 +504,99 @@ def llm_edits_via_command(
     command: Sequence[str],
     model: Optional[str] = None,
     timeout_s: float = 300.0,
+    backend: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Ask a headless LLM (e.g. ``opencode run``) for edits, parse JSON out.
+    """Ask a headless LLM for edits, parse JSON out.
 
-    ``command`` entries containing {prompt_file} receive a temp file with the
-    prompt. When unset, a default opencode invocation is used with the prompt
-    as the message argument.
+    ``command`` entries containing {prompt_file} receive a temp file with
+    the prompt. When unset, the named backend's own convention is used -
+    ``agy --print``, ``opencode run``, ``gemini -p``, ``qwen <prompt>`` and
+    so on, one per entry in ``src.llm_backends.py``.
     """
+    edits, _receipt = llm_edits_with_receipt(
+        prompt, command, model=model, timeout_s=timeout_s, backend=backend
+    )
+    return edits
+
+
+def llm_edits_with_receipt(
+    prompt: str,
+    command: Sequence[str],
+    model: Optional[str] = None,
+    timeout_s: float = 300.0,
+    backend: Optional[str] = None,
+    api_base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    extra_args: Optional[Sequence[str]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Ask a headless LLM for edits and return the edits with their receipt.
+
+    The receipt is the point. A model that proposed nothing, a model that
+    proposed twelve unusable edits, a backend that is not installed, a
+    backend that timed out and a backend that answered with prose are all
+    different outcomes, and the ledger has to be able to tell them apart.
+    """
+    receipt: Dict[str, Any] = {
+        "backend": backend or ("custom" if command else "opencode"),
+        "argv": [],
+        "exit_code": None,
+        "timed_out": False,
+        "duration_s": 0.0,
+        "error": "",
+        "proposed": 0,
+        "applied": 0,
+        "refused": 0,
+        "refused_reasons": [],
+    }
     with tempfile.TemporaryDirectory() as tmp:
         pf = Path(tmp) / "res_prompt.txt"
         pf.write_text(prompt, encoding="utf-8")
 
-        if command:
-            argv = [str(c).replace("{prompt_file}", str(pf)) for c in command]
-        else:
-            argv = ["opencode", "run"]
-            if model:
-                argv += ["--model", model]
-            argv += [prompt]
-        try:
-            proc = subprocess.run(
-                argv, capture_output=True, text=True, timeout=timeout_s
+        if backend == "api":
+            res = run_api(
+                prompt,
+                model or "gpt-4o-mini",
+                base_url=api_base_url or "https://api.openai.com/v1",
+                api_key=api_key,
+                timeout_s=timeout_s,
             )
-        except Exception:
-            return []
-        if proc.returncode != 0:
-            return []
-        return _parse_json_edits(proc.stdout or "")
+        elif command:
+            argv = [str(c).replace("{prompt_file}", str(pf)) for c in command]
+            res = run_backend(argv, timeout_s=timeout_s)
+        else:
+            spec = find_backend(backend or "") or find_backend("opencode")
+            if spec is None:
+                receipt["error"] = "no such backend: %r" % (backend,)
+                return [], receipt
+            try:
+                argv = build_command(
+                    spec, prompt, model=model, prompt_file=str(pf),
+                    extra_args=extra_args,
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                receipt["error"] = str(exc)
+                return [], receipt
+            res = run_backend(argv, timeout_s=timeout_s)
+
+    receipt["argv"] = list(res.argv)
+    receipt["exit_code"] = res.exit_code
+    receipt["timed_out"] = bool(res.timed_out)
+    receipt["duration_s"] = round(float(res.duration_s), 2)
+    receipt["error"] = res.error
+    receipt["stdout_len"] = len(res.stdout or "")
+    receipt["stdout_head"] = (res.stdout or "").strip()[:400]
+    if not res.ok:
+        head = (res.stderr or res.stdout or "").strip().splitlines()
+        if head:
+            receipt["stderr_head"] = head[0][:200]
+        return [], receipt
+    edits = _parse_json_edits(res.stdout or "")
+    receipt["proposed"] = len(edits)
+    if not edits:
+        receipt["no_edits_reason"] = (
+            "the backend answered but the answer held no parseable edit array"
+        )
+    return edits, receipt
 
 
 def _equations_text(ledger: Dict[str, Any]) -> str:
@@ -1295,6 +1392,11 @@ def run_loop(
     provider: str = "numeric",
     llm_model: Optional[str] = None,
     llm_cmd: Optional[Sequence[str]] = None,
+    llm_backend: Optional[str] = None,
+    llm_timeout_s: float = 300.0,
+    llm_api_base_url: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
+    llm_extra_args: Optional[Sequence[str]] = None,
     max_llm_edits: int = 12,
     stop_on_no_improvement: bool = False,
     min_gain: float = 0.0,
@@ -1370,7 +1472,14 @@ def run_loop(
     for k in range(start_k + 1, total_k + 1):
         edits_applied = 0
         used = "numeric"
-        if provider == "opencode" or llm_cmd:
+        llm_receipt: Dict[str, Any] = {}
+        backend = llm_backend
+        if provider == "auto" and not llm_cmd:
+            picked = auto_backend()
+            backend = picked.name if picked else None
+            if picked is None:
+                llm_receipt = {"backend": "auto", "error": "no LLM backend is installed"}
+        if (provider == "opencode" and not backend) or backend or llm_cmd:
             prompt = (
                 "You are editing DSP equations for a song reconstruction. "
                 "Edits JSON array only: [{\"section\": int, \"id\": "
@@ -1379,10 +1488,28 @@ def run_loop(
                 "\"value\": float}]. Improve weak sections below.\n\n"
                 + _prompt_text(ledger)
             )
-            edits = llm_edits_via_command(prompt, llm_cmd or [], model=llm_model)
+            edits, llm_receipt = llm_edits_with_receipt(
+                prompt,
+                llm_cmd or [],
+                model=llm_model,
+                timeout_s=llm_timeout_s,
+                backend=backend,
+                api_base_url=llm_api_base_url,
+                api_key=llm_api_key,
+                extra_args=llm_extra_args,
+            )
             edits = edits[:max_llm_edits]
-            edits_applied = apply_edits(ledger, edits)
-            used = "opencode+numeric"
+            applied, refused = apply_edits_detailed(ledger, edits)
+            edits_applied = applied
+            llm_receipt["applied"] = applied
+            llm_receipt["refused"] = len(refused)
+            llm_receipt["refused_reasons"] = [
+                {"id": str(r.get("edit", {}).get("id", "")), "reason": r.get("reason", "")}
+                for r in refused[:8]
+            ]
+            if llm_receipt.get("proposed", 0) > max_llm_edits:
+                llm_receipt["truncated_at"] = max_llm_edits
+            used = "%s+numeric" % (llm_receipt.get("backend") or "llm")
         sections = ledger["sections"]
         st_hw = float(ledger.get("stft_half_window_s", 0.0))
 
@@ -1467,6 +1594,7 @@ def run_loop(
             "iteration": k,
             "provider": used,
             "llm_edits_applied": edits_applied,
+            "llm_receipt": llm_receipt,
             "accepted": accepted,
             "gain": round(gain, 9),
             "global": g,
