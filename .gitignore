@@ -74,10 +74,10 @@ Thumbs.db
 AI-for-Engineers-*.md
 TRAVEL-HEAVY-ROLES-RESEARCH.md
 
-  # Audio Maker pipeline output caches & transient uploads
-  out/
-  out_temp/
-  out_temp_*/
+# Audio Maker pipeline output caches & transient uploads
+out/
+out_temp/
+out_temp_*/
 out_test/
 out_test_*/
 data/uploads/*
