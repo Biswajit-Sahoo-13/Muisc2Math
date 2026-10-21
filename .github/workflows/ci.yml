@@ -81,7 +81,7 @@ jobs:
               print("no token in the environment; cannot post a status")
               raise SystemExit(0)
           body = json.dumps({"state": "failure", "description": desc,
-                             "context": "pytest"}).encode()
+                             "context": "pytest-${{ matrix.os }}"}).encode()
           req = urllib.request.Request(
               "https://api.github.com/repos/%s/statuses/%s"
               % (os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]),

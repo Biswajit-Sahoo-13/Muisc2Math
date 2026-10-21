@@ -99,7 +99,9 @@ def waveform_correlation(x: np.ndarray, y: np.ndarray) -> float:
     b = np.asarray(y[:n], dtype=np.float64)
     if np.std(a) < 1e-12 or np.std(b) < 1e-12:
         return 0.0
-    return float(np.corrcoef(a, b)[0, 1])
+    # A Pearson correlation lies in [-1, 1]. Rounding can push it a hair
+    # outside that range, and callers treat the result as a bounded score.
+    return float(np.clip(np.corrcoef(a, b)[0, 1], -1.0, 1.0))
 
 
 def find_best_lag(

@@ -64,7 +64,7 @@ class TestHelpers(unittest.TestCase):
     def test_correlation_bounds(self):
         a = _sine(220, 0.5)
         self.assertAlmostEqual(waveform_correlation(a, a), 1.0, places=6)
-        self.assertEqual(waveform_correlation(a, -a), -1.0)
+        self.assertAlmostEqual(waveform_correlation(a, -a), -1.0, places=6)
         self.assertEqual(waveform_correlation(np.zeros(100), a), 0.0)
         self.assertEqual(waveform_correlation(a, np.zeros(100)), 0.0)
 
