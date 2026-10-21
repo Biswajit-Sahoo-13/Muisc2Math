@@ -488,6 +488,99 @@ pointing at a ledger from a *different* fixture set).
 - `k_notes` (harmonic notes per section) is still at 2 and has not been
   measured the way `k_hits` was.
 
+---
+
+## Phase 8: Raised-cosine support tapers — measured and rejected
+
+> **Provenance.** A/B on the frozen fixture set, 10 s, 6 iterations, bank on,
+> the same command the scoreboard harness uses. The baseline reproduces the
+> published rows exactly (`stem_drums` correlation 0.410701 / LSD 18.035 /
+> onset 0.684113; `stem_other` 0.737649 / 9.504 / 0.308074), so the
+> comparison is against the same code path and the same fixtures. Reproduce
+> with:
+>
+> ```bash
+> python main.py res -i data/output/_fixtures/stem_drums.wav -o out/ab/base_drums -d 10 --iterations 6
+> # apply the change, then:
+> python main.py res -i data/output/_fixtures/stem_drums.wav -o out/ab/after_drums -d 10 --iterations 6
+> ```
+
+### The hypothesis
+
+The support mask in `src/res_synthesis.py::_support_mask` built its attack
+and release tapers with `np.clip((t - a) / L, 0.0, 1.0)` - a linear ramp.
+A linear ramp leaves a slope discontinuity where the partial is switched on
+or off, so the truncated sinusoid leaks energy at 1/f^2 across the spectrum
+instead of 1/f^3. The renderer already used a raised-cosine crossfade for
+section boundaries (`apply_ola_crossfade` in `src/res_loop.py`), so the
+partial-level mask was the odd one out. The claim was that the broadband
+splatter inflated LSD and made the referee spend partial budget on the
+engine's own truncation artefacts.
+
+The code claims are **true**: both ramps were linear, and the model-side
+mask in `src/sinusoidal_model.py::refine_track` was linear too, with hard
+`np.where` steps in two branches.
+
+### What the measurement says
+
+Both variants regress. `stem_drums` / `stem_other`:
+
+| metric | baseline | renderer taper only | both sides |
+|---|---|---|---|
+| correlation | 0.410701 / 0.737649 | 0.404163 (-1.59%) / 0.727594 (-1.36%) | 0.403703 (-1.70%) / 0.721243 (-2.22%) |
+| SNR (dB) | 0.449 / 3.397 | 0.426 / 3.262 | 0.424 / 3.188 |
+| log-spectral distance | 18.035 / 9.504 | 18.053 / 9.562 | 18.065 / 9.582 |
+| onset correlation | 0.684113 / 0.308074 | 0.679580 / 0.293591 | 0.678108 / 0.281585 |
+| partials | 442 / 347 | 431 / 319 | 425 / 303 |
+
+The partial count falls, as predicted, and the fidelity falls with it. LSD
+gets *worse*, not better.
+
+### Why the premise does not hold
+
+The splatter being removed is not broadband at this engine's ramp lengths.
+Out-of-band energy of a 440 Hz partial, as a fraction of the partial's own
+energy:
+
+| ramp length | linear, beyond 1/L | raised cosine, beyond 1/L | linear, beyond 500 Hz |
+|---|---|---|---|
+| 1 ms | 0.000% | 0.000% | 0.0065% |
+| 5 ms | 0.002% | 0.000% | 0.0002% |
+| **20 ms** (the engine's attack) | **0.008%** | 0.001% | **0.0000%** |
+| **30 ms** (the engine's release) | **0.011%** | 0.001% | **0.0000%** |
+
+The 1/f^2 versus 1/f^3 distinction is correct DSP and the magnitudes are
+negligible here: a 20-30 ms ramp is a wide window, so its main lobe is
+33-50 Hz wide and there is no broadband click to remove. The theory was
+extrapolated from short truncations to an engine that does not make them.
+
+The taper *shape* also costs accuracy. A raised cosine is gentler at the
+very start than a straight line, so it delays and attenuates a genuinely
+sharp attack - the kind of attack a drum has. A linear ramp at least
+ramps at a constant rate.
+
+### The related divergence that is real
+
+The same "two ends must agree" instinct points at something that *is*
+measurable: the model-side mask fades over 0.25 s while the renderer fades
+over `_RELEASE_FADE_S = 0.03 s`, so the model fits 0.22 s of tail the
+renderer never synthesises. `tools/audit_fade_and_shelf.py` already measures
+this, and aligning the renderer's fade to 0.25 s takes the **replica**
+(correlation between the analyser's own `sinusoid_audio` and the RES render
+of the same partials) from 0.9962 to **1.0000** on the bass stem and
+0.9906 to 0.9992 on the full mix, with **fidelity flat** (0.5189 ->
+0.5196 and 0.6714 -> 0.6701).
+
+So the renderer is discarding fitted content, and fixing it makes the
+render an exact replica of the model - but it does not improve fidelity,
+because the binding constraint is the analyser's model of the audio, not
+the renderer. The renderer's fade is also deliberately short:
+`tests/test_res_whistle_suppression.py` requires `_RELEASE_FADE_S <= 0.05`
+and `< 0.25` to suppress whistles, so the 0.25 s alignment is not free.
+The remaining question - what to do about a renderer that discards 0.22 s
+of fitted tail - is open.
+
+
 
 
 

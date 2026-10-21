@@ -278,20 +278,68 @@ move even when the model genuinely improves.** Report all three. If you
 conclude that the referee metric is the wrong target for percussion, that
 is a legitimate and important finding — see A6.
 
-### A3. Spectral splatter from truncated partials
+### A3. Spectral splatter from truncated partials — MEASURED AND REJECTED
 
-**Why it is on this list.** A sinusoid that starts and stops abruptly
-leaks energy across the whole spectrum (Gibbs). The renderer already has
-a support mask and a release fade — `_support_mask` and
-`_RELEASE_FADE_S = 0.03` in `src/res_synthesis.py` — so the *offset* is
-handled. Check whether the *onset* is equally tapered. If it is not, every
-partial onset is a broadband click, and the fix is cheap, local and
-measurable.
+**This item was measured and it does not work. Do not repeat it.**
 
-**How to measure.** Log-spectral distance on the triad fixture and on
-`stem_drums`. This one is also low risk: a taper that is too long smears
-the onset, so sweep the taper length and report the curve rather than a
-single best value.
+The hypothesis: the support mask in `src/res_synthesis.py::_support_mask`
+builds its attack and release tapers with `np.clip(...)`, a linear ramp,
+which leaves a slope discontinuity and so leaks at 1/f^2 instead of 1/f^3.
+The renderer already uses a raised-cosine crossfade for section boundaries
+(`apply_ola_crossfade`), so the partial-level mask looked like the odd one
+out. The claim was that every partial onset is a broadband click inflating
+LSD and wasting partial budget.
+
+**The code claims were true and the numbers were not.** Both variants
+(renderer-side only, and both sides) were measured on the frozen fixtures,
+10 s, 6 iterations, against a baseline that reproduced the published rows
+exactly:
+
+| metric | baseline | renderer taper only | both sides |
+|---|---|---|---|
+| correlation (drums / other) | 0.410701 / 0.737649 | -1.59% / -1.36% | -1.70% / -2.22% |
+| LSD (drums / other) | 18.035 / 9.504 | +0.10% / +0.61% | +0.17% / +0.82% |
+| partials (drums / other) | 442 / 347 | 431 / 319 | 425 / 303 |
+
+The partial count falls, as predicted, and the fidelity falls with it. LSD
+gets worse, not better.
+
+**Why the premise fails.** The splatter is not broadband at this engine's
+ramp lengths. Out-of-band energy of a 440 Hz partial, as a fraction of its
+own energy: at the engine's 20 ms attack and 30 ms release the linear ramp
+puts **0.008-0.011%** beyond 1/L and **0.0000%** beyond 500 Hz. A 20-30 ms
+ramp is a wide window, so there is no click to remove. The 1/f^2 versus
+1/f^3 distinction is correct DSP and the magnitude is negligible. The
+taper shape also costs accuracy: a raised cosine is gentler at the start
+than a straight line, so it delays and attenuates a genuinely sharp attack.
+
+The full record, with the out-of-band table and the reproduction commands,
+is in `docs/res_research.md` § *Phase 8*.
+
+**The related divergence that is real.** The same "the two ends must agree"
+instinct points at something that *is* measurable: the model-side mask in
+`src/sinusoidal_model.py::refine_track` fades over 0.25 s while the
+renderer fades over `_RELEASE_FADE_S = 0.03 s`, so the model fits 0.22 s
+of tail the renderer never synthesises. `tools/audit_fade_and_shelf.py`
+already measures this, and aligning the renderer's fade to 0.25 s takes
+the **replica** - the correlation between the analyser's own
+`sinusoid_audio` and the RES render of the same partials - from 0.9962 to
+**1.0000** on the bass stem and 0.9906 to 0.9992 on the full mix, with
+fidelity flat (0.5189 -> 0.5196, 0.6714 -> 0.6701). So the renderer
+discards fitted content and the fix makes the render an exact replica of
+the model - but it does not improve fidelity, because the binding
+constraint is the analyser's model of the audio, not the renderer. The
+renderer's fade is also deliberately short
+(`tests/test_res_whistle_suppression.py` requires `_RELEASE_FADE_S <= 0.05`
+and `< 0.25`, to suppress whistles), so the alignment is not free.
+
+**That is the better-motivated version of this idea**, and it is open: a
+renderer that discards 0.22 s of fitted tail means the equations a user
+edits do not fully describe the audio they hear. Whether the answer is a
+longer renderer fade, a change to the analyser's extrapolation, or an
+explicit "the equation describes a partial that the renderer truncates"
+annotation in the equation sheet is a real design question. Measure the
+replica, not just the fidelity.
 
 ### A4. Envelope shape
 
