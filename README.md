@@ -25,6 +25,10 @@
 - [High-Fidelity Reconstruction: Sinusoidal Modeling Synthesis](#high-fidelity-reconstruction-sinusoidal-modeling-synthesis)
   - [Measured Benchmarks and Correction Values](#measured-benchmarks-and-correction-values)
   - [What Material Does This Reconstruct Best?](#what-material-does-this-reconstruct-best)
+  - [Will it work on *your* song?](#will-it-work-on-your-song)
+  - [Where this product shines — and where it does not](#where-this-product-shines--and-where-it-does-not)
+  - [What the metrics mean](#what-the-metrics-mean)
+  - [Performance and footprint](#performance-and-footprint)
   - [Measured Limits (not projections)](#measured-limits-not-projections)
 - [Closed-Loop Error Correction and Alignment](#closed-loop-error-correction-and-alignment)
   - [Multi-Stage Alignment Pipeline](#multi-stage-alignment-pipeline)
@@ -239,6 +243,144 @@ liability.
 
 ---
 
+### Will it work on *your* song?
+
+One number decides it: **the tonal energy fraction of the input.** The
+correlation tracks it at **r = +0.935**, and the engine has no way to
+represent what is not tonal. So:
+
+| your material looks like | tonal energy | expect |
+|---|---|---|
+| ambient pad, organ, clean synth, plucked motif | 80–100 % | **0.75–1.00** — this is the sweet spot |
+| a vocal or a clean bass line | 50–85 % | **0.60–0.80** |
+| a full mix with drums | 40–80 % | **0.60–0.85**, and the drums are the part that suffers |
+| a drum bus, a breakbeat, a noise texture | 0–20 % | **0.23–0.50** — use it as the honest limit, not the demo |
+
+Two things raise the score and two things lower it, all measured:
+
+- **Raises it:** unmastered or lightly processed source (a stem, a raw
+  bounce), sustained/exponentially decaying notes, stable pitch, a single
+  voice at a time.
+- **Lowers it:** brickwall limiting and heavy saturation on the master
+  (the waveform is already destroyed before we read it), a wide stereo
+  image collapsed to mono, and dense percussion.
+
+So: **give it the stem, not the master.** `stem_other` reconstructs at
+0.7376 from 91.5 % tonal content; the same material inside the full mix
+lands at 0.8518 for the whole 10 s but with the drums dragging the stem
+figures down to 0.4107. Work on the harmonic layers and the engine is
+strong; work on the percussion and it is telling you the truth.
+
+---
+
+### Where this product shines — and where it does not
+
+**The output is not an audio file. It is a short set of equations you can
+open, read, edit and re-render.** That is the product, and it is what
+separates this from a codec, a stem separator or a mastering tool.
+
+On the 10 s drum-stem fixture the whole reconstruction is **442 partials,
+about 2,650 numbers, against 220,500 audio samples — 83× smaller** — and
+every one of those numbers is a frequency, an amplitude, a phase, a decay
+or a support window. That compression is only useful if the numbers mean
+something, and here they do.
+
+**Where it shines:**
+
+1. **Reverse engineering as an instrument.** "What *is* this sound,
+   mathematically?" gets an answer you can read: a decaying cosine at
+   381.563 Hz with λ = 0.999, not a black-box embedding.
+2. **Resynthesis you can edit.** Change one partial's decay, re-render,
+   hear the difference. The equation sheet is the source of truth, and the
+   renderer honours it — `tests/test_res_replica.py` pins that the render
+   reproduces the analyser's own model.
+3. **Transparent analysis for MIR.** Because the model is explicit,
+   everything downstream is inspectable: pitch tracks, note events,
+   per-partial timing.
+4. **Teaching and prototyping a generative instrument.** The equation
+   language is the score format, so "write a new instrument" is writing
+   equations, not training a model.
+
+**Where it does not, stated plainly:**
+
+- **It is not a codec and not a mastering tool.** 0.8518 waveform
+  correlation on a dense master is not a transparent codec result, and
+  anyone promising bit-accurate reconstruction from this representation
+  is wrong. A finished commercial master caps near **0.65–0.75**
+  correlation for *any* sum-of-sinusoids method, because brickwall
+  limiting and microsecond phase jitter are not invertible.
+- **It does not reconstruct percussion.** A kick, a snare and a hi-hat
+  are not sums of sinusoids. 0.4107 on the drum stem, LSD 18.04 dB, and
+  the residual has to carry the attack.
+- **It does not preserve the room.** Reverb is not modelled; it lands in
+  the residual.
+- **It is not a stem separator.** Separation is a *pre-step*; the
+  separated stems reconstruct worse than the mix does, because the mix's
+  correlation is helped by everything in it.
+- **It is not fast enough for real time.** See below.
+- **It cannot track a moving pitch well yet.** A vibrato tone scores
+  0.5196 using 942 partials, because a moving frequency is being
+  approximated by many stationary ones. This is the largest remaining
+  physics gap and the other agent is on it.
+
+**The honest summary:** this is a *reverse-engineering* tool for tonal
+material, not a universal audio codec. Feed it the harmonic layers of a
+song and it gives you something remarkable — the music as maths. Feed it a
+drum bus and it gives you the truth about a sum of sinusoids.
+
+---
+
+### What the metrics mean
+
+Every number the engine prints is a row in `data/output/scoreboard.json`
+pointing at a ledger produced by a real run. These are the four that
+matter, and which to trust:
+
+| metric | range | what it measures | trust it for |
+|---|---|---|---|
+| **waveform correlation** | 0–1 | how much of the reconstructed waveform matches, sample for sample | the single number, but it punishes transients hardest |
+| **log-spectral distance (LSD)** | dB, lower is better | the average log-magnitude error across the spectrum — timbre | **timbre**, and it is the metric to watch for percussion |
+| **onset correlation** | 0–1 | how well the *timing* of attacks matches | **timing**; the drums score 0.684 here, their best metric |
+| **SNR / segmental SNR** | dB | energy of the residual against the signal, overall and per segment | energy; segmental SNR can be negative while correlation is fine, which means the residual is noisy rather than the reconstruction wrong |
+
+Read them together. A drum stem at **0.4107 correlation but 0.684 onset
+correlation** means *the hits are in the right place and their shape is
+wrong* — a modelling problem, not a timing problem. A result with 0.80
+correlation and **negative** segmental SNR means the residual is
+energy-bloated rather than the reconstruction being wrong.
+
+Two of them must never be mixed up:
+
+- **Synthetic fixture (exact ground truth): corr 0.999921, SNR 38.03 dB,
+  LSD 0.33.** This is the *representation's* ceiling when the input is
+  exactly what a sum of sinusoids can express. It says the engine is not
+  the limit.
+- **Real material: 0.4107 – 0.8518.** This is the *engine's* limit on
+  material that is not.
+
+---
+
+### Performance and footprint
+
+Measured on this machine, 8 workers, one 60 s input:
+
+| | |
+|---|---|
+| end to end | **169 s** (73 s evidence, 94 s loop, 2 s render) |
+| throughput | **0.355× realtime** — a 60 s song takes about 3 minutes |
+| 90 s input | 224 s |
+| peak memory | **2.7 GB** |
+| worker scaling | 1 w 441 s, 4 w 207 s, **8 w 185 s**, 16 w 219 s |
+
+Throughput does **not** improve past 8 workers, and 16 workers is worse
+than 8. Inside the evidence stage, the refinement inner loop
+(`refine_track` / `project` / `minimize_scalar`) is **98.4 %** of the
+time; streaming the scorer was tried and rejected as 0.9 % of the total.
+So: batch overnight, not interactively, and treat the Streamlit app as a
+job runner rather than a live instrument.
+
+---
+
 ### Measured Limits (not projections)
 
 Every figure below is measured by `tools/bottleneck_scoreboard.py` on a frozen fixture set and recorded in `data/output/scoreboard.json`, with the exact command and the ledger path stored alongside it. See `docs/res_research.md` § Phase 7 for provenance.
@@ -290,6 +432,25 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 - **Log-Spectral Distance (LSD) Referee Metric:** Balances time-domain correlation with spectral fidelity, prioritizing auditory timbre matching over microsecond phase jitter.
 
 > **Which of these actually run.** The OLA seam smoother, the Hilbert phase alignment and the clustered joint refinement are all implemented and unit-tested, but the production render path does not call them (`render_ledger(..., ola=False)` at every production call site), so they contribute nothing to a shipped reconstruction. The LPC noise class is likewise opt-in: it is reached only with `--noise`, and its gate is calibrated on measurement rather than on the SFM threshold this list implies — whole-spectrum SFM is ~0 on real residuals and can never be the primary trigger, so the zero-crossing rate carries the gate. `docs/res_research.md` § Phase 7 records which claims are live and which are not.
+
+**An LLM may propose the edits; it never decides.** `--provider` selects
+where the hypothesis proposals come from: `numeric` (the default — a
+coordinate refit, no model in the loop), `auto`, `api` (any
+OpenAI-compatible endpoint), or one of ten agent CLIs (`agy`, `opencode`,
+`claude`, `gemini`, `qwen`, `codex`, `crush`, `goose`, `amp`, `ollama`).
+`m2m llm-backends` reports which are installed and actually answer.
+
+The split matters: the language model returns **candidate edits to
+existing fitted partials** (amplitude, phase, decay, a frequency offset, or
+drop) in a machine-checked JSON shape, and then the ordinary numeric
+refit runs and **the referee scores the result exactly as it scores a
+numeric iteration**. A suggestion that makes the reconstruction worse is
+rolled back by the same arbiter. The CLI backends carry their own
+authentication, so the project needs no API key; `--provider api` is the
+one path that does, and it is also the only one with no tools and no side
+effects, which makes it the better fit for a latency-bounded proposer.
+Every call leaves a receipt in the ledger — backend, exact argv, exit
+code, duration, the raw answer, and every edit that was refused and why.
 
 ---
 
@@ -428,6 +589,8 @@ python -m unittest discover tests
 | Command | Description | Primary Inputs / Outputs |
 |---|---|---|
 | `python main.py res` | Iterative equation synthesis loop with Phase 5 DSP stabilization. Flags: `--noise` (stochastic residual model), `--spectral-lane` (magnitude-domain acceptance), `--k-hits` / `--k-notes` (per-section hypothesis caps; `--k-hits` defaults to 12), `--stems auto\|demucs\|<dir>` (stem-first mode) | Input audio -> Reconstructed audio, residual WAV, equation JSON |
+| `python main.py llm-backends` | Reports which LLM backends the hypothesis provider can use: installed, identified, and usable. `--check` also sends a real prompt to each one | Installed CLIs -> per-backend verdict |
+| `python main.py res --provider <name>` | Hypothesis provider: `numeric` (default, no LLM), `auto` (first usable backend), `api` (an OpenAI-compatible endpoint, reads `OPENAI_API_KEY`), or a backend name: `agy`, `opencode`, `claude`, `gemini`, `qwen`, `codex`, `crush`, `goose`, `amp`, `ollama`. The LLM only *proposes* edits; the referee scores and rolls back. `--llm-extra-args` passes flags a backend needs to answer | Input audio -> reconstructed audio, ledger with the LLM receipt |
 | `python main.py res-recommend` | Extrapolates gain decay and computes optimal iteration budget | Input ledger JSON -> Recommendation metrics |
 | `python main.py recreate-song` | Multi-track equation decomposition of full audio files | Input audio -> DAW project JSON and rendered WAV |
 | `python main.py fit-formula` | Matches audio segments against `FORMULA_BANK` via L-BFGS-B | Input WAV -> Fitted audio WAV and parameter dictionary |
