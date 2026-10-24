@@ -8,11 +8,9 @@ Adheres to DSP principles:
 
 from __future__ import annotations
 import json
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import scipy.signal as signal
-import soundfile as sf
 import librosa
 
 
@@ -29,8 +27,17 @@ def compute_error_metrics(
     n_fft: int = 2048,
     hop_length: int = 512,
     eps: float = 1e-12,
-) -> Dict[str, float]:
-    """Computes rigorous DSP error metrics: MSE, SNR (dB), Spectral Error, and Log-Spectral Distance (LSD)."""
+    extras: bool = False,
+) -> Dict[str, Any]:
+    """Computes rigorous DSP error metrics: MSE, SNR (dB), Spectral Error, and Log-Spectral Distance (LSD).
+
+    ``extras=True`` adds the evaluation-upgrade metrics —
+    ``mrstft_db`` (multi-resolution log-spectral distance over several
+    window sizes, which sees tonal-vs-textural errors a single window
+    understates) and ``band_corr`` (waveform correlation per frequency
+    band, which says *where* in the spectrum the error lives). The referee
+    hot path keeps ``extras=False`` so its cost and behaviour stay put.
+    """
     x, x_hat = align_signals(x, x_hat)
     residual = x - x_hat
 
@@ -57,7 +64,7 @@ def compute_error_metrics(
     frame_lsd = np.sqrt(np.mean((log_orig_db - log_recon_db) ** 2, axis=0))
     mean_lsd_db = float(np.mean(frame_lsd))
 
-    return {
+    out: Dict[str, Any] = {
         "mse": mse,
         "snr_db": snr_db,
         "spectral_mse": spectral_mse,
@@ -65,6 +72,85 @@ def compute_error_metrics(
         "signal_energy": float(power_signal),
         "residual_energy": float(power_noise),
     }
+    if extras:
+        out["mrstft_db"] = _mrstft_db(x, x_hat, sr, eps=eps)
+        out["band_corr"] = _band_corr(x, x_hat, sr)
+    return out
+
+
+# Bands for the per-band correlation metric. Chosen to match the error
+# budget conventions used across the research docs (sub-bass, core, texture,
+# air) so ledger numbers compare directly with docs/PHYSICS_ROADMAP.md.
+_BAND_EDGES_HZ = (150.0, 2000.0, 8000.0)
+_BAND_NAMES = ("low", "mid", "high", "top")
+
+
+def _band_corr(
+    x: np.ndarray, x_hat: np.ndarray, sr: int,
+    edges: Tuple[float, ...] = _BAND_EDGES_HZ,
+) -> Dict[str, float]:
+    """Waveform correlation per frequency band (FFT band-split, no window).
+
+    Both signals are split with brick-wall masks on a shared rfft grid and
+    correlated within each band. A band with (near-)zero energy in either
+    signal correlates 0.0 — there is nothing to agree about, which is the
+    honest score for a band one side does not render at all.
+    """
+    n = min(len(x), len(x_hat))
+    if n < 2:
+        return {name: 0.0 for name in _BAND_NAMES}
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
+    edges_hz = (0.0,) + tuple(edges) + (float(freqs[-1]) + 1.0,)
+    out: Dict[str, float] = {}
+    for i, name in enumerate(_BAND_NAMES):
+        mask = (freqs >= edges_hz[i]) & (freqs < edges_hz[i + 1])
+        if not mask.any():
+            out[name] = 0.0
+            continue
+        bx = np.fft.irfft(np.fft.rfft(x[:n]) * mask, n)
+        br = np.fft.irfft(np.fft.rfft(x_hat[:n]) * mask, n)
+        sa, sb = float(np.std(bx)), float(np.std(br))
+        if sa <= 1e-12 or sb <= 1e-12:
+            out[name] = 0.0
+            continue
+        out[name] = float(np.corrcoef(bx, br)[0, 1])
+    return out
+
+
+def _mrstft_db(
+    x: np.ndarray,
+    x_hat: np.ndarray,
+    sr: int,
+    sizes: Tuple[int, ...] = (512, 1024, 2048, 4096),
+    floor_db: float = -80.0,
+    eps: float = 1e-12,
+) -> float:
+    """Multi-resolution log-spectral distance (mean LSD over window sizes).
+
+    Same convention as the single-window LSD (Hann, coherent-gain
+    normalised, -80 dB floor) averaged over several resolutions, following
+    the multi-resolution STFT loss family (Yamamoto et al. 2019): tonal
+    detail shows at long windows, transients at short ones, and a single
+    window can miss either.
+    """
+    n = min(len(x), len(x_hat))
+    distances: List[float] = []
+    for size in sizes:
+        # A window longer than the signal would be mostly padding; clamp to
+        # the largest power of two that still slides, floor at 256.
+        eff = size
+        while eff > 256 and eff > n:
+            eff //= 2
+        if eff > n:
+            continue
+        win = signal.get_window("hann", eff)
+        gain = 0.5 * float(np.sum(win))
+        so = np.abs(librosa.stft(x[:n], n_fft=eff, hop_length=eff // 4, window=win)) / gain
+        sr_ = np.abs(librosa.stft(x_hat[:n], n_fft=eff, hop_length=eff // 4, window=win)) / gain
+        lo = np.maximum(20.0 * np.log10(so + eps), floor_db)
+        lr = np.maximum(20.0 * np.log10(sr_ + eps), floor_db)
+        distances.append(float(np.mean(np.sqrt(np.mean((lo - lr) ** 2, axis=0)))))
+    return float(np.mean(distances)) if distances else 0.0
 
 
 def segmental_snr_db(
