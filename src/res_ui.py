@@ -15,9 +15,41 @@ import threading
 import time
 import wave
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+from src.analysis import load_audio
+
+
+def _fidelity_block(ledger: Dict[str, Any], best_wav_path, source_path):
+    """Score the shipped render on the original = 100% scale.
+
+    Same measurement as tools/fidelity_report.py: reload the source the
+    ledger points at, crop to the analysed span, compare against
+    res_best.wav. Returns None (never raises) when anything is missing, so
+    a UI can simply omit the panel.
+    """
+    try:
+        from src.fidelity import compute_fidelity
+
+        best_wav_path = Path(best_wav_path)
+        if not best_wav_path.exists() or not Path(source_path).exists():
+            return None
+        y_src, _ = load_audio(str(source_path),
+                              target_sr=int(ledger["sample_rate"]))
+        n = int(ledger.get("n_samples", 0)) or len(y_src)
+        y_src = y_src[:n]
+        y_r, sr_r = load_audio(str(best_wav_path), target_sr=None)
+        if sr_r != int(ledger["sample_rate"]):
+            return None
+        n_r = min(len(y_src), len(y_r))
+        if n_r < 8:
+            return None
+        return compute_fidelity(y_src[:n_r],
+                                np.asarray(y_r[:n_r], dtype=np.float64), sr_r)
+    except Exception:
+        return None
 
 
 def _wav_bytes(y: np.ndarray, sr: int) -> bytes:
@@ -127,12 +159,15 @@ def _res_worker(job: Dict[str, Any], blob: bytes, name: str, dur: float,
                 iters: int, bank: bool, root: Path,
                 stem_mode: str = "none",
                 enable_noise: bool = False,
-                spectral_lane: bool = False) -> None:
+                spectral_lane: bool = False,
+                energy_parity: bool = False,
+                parity_mode: str = "ls") -> None:
     try:
         payload = run_res_payload(
             blob, name, dur, iters, bank, root=root, progress=job,
             stem_mode=stem_mode, enable_noise=enable_noise,
             spectral_lane=spectral_lane,
+            energy_parity=energy_parity, parity_mode=parity_mode,
         )
         job["payload"] = payload
         job["state"] = "done"
@@ -144,7 +179,9 @@ def _res_worker(job: Dict[str, Any], blob: bytes, name: str, dur: float,
 def spawn_job(key: str, blob: bytes, name: str, dur: float, iters: int,
               bank: bool, root: Path, stem_mode: str = "none",
               enable_noise: bool = False,
-              spectral_lane: bool = False) -> Dict[str, Any]:
+              spectral_lane: bool = False,
+              energy_parity: bool = False,
+              parity_mode: str = "ls") -> Dict[str, Any]:
     """Start (or return the existing) background RES job for ``key``."""
     with _JOBS_LOCK:
         busy = [
@@ -166,7 +203,7 @@ def spawn_job(key: str, blob: bytes, name: str, dur: float, iters: int,
         threading.Thread(
             target=_res_worker,
             args=(job, blob, name, dur, iters, bank, root, stem_mode,
-                  enable_noise, spectral_lane),
+                  enable_noise, spectral_lane, energy_parity, parity_mode),
             daemon=True,
         ).start()
         return job
@@ -285,6 +322,8 @@ def run_res_payload(
     spectral_lane: bool = False,
     k_notes: int = 2,
     k_hits: int = 12,
+    energy_parity: bool = False,
+    parity_mode: str = "ls",
 ) -> Dict[str, Any]:
     """Analyze ``upload_bytes`` with the RES loop and collect display artifacts.
 
@@ -308,7 +347,6 @@ def run_res_payload(
     stochastic class (LPC formant noise). A sum of sinusoids cannot express
     breath, air or sibilance, so that content is absent without it.
     """
-    from src.analysis import load_audio
     from src.res_evidence import build_evidence
     from src.res_loop import run_loop, _equations_text
 
@@ -414,6 +452,7 @@ def run_res_payload(
             progress_fn=_prog if progress is not None else None,
             enable_noise=enable_noise, spectral_lane=spectral_lane,
             k_notes=k_notes, k_hits=k_hits,
+            energy_parity=energy_parity, parity_mode=parity_mode,
         )
     if progress is not None:
         progress.update(stage="packaging", stage_pct=1.0,
@@ -513,11 +552,18 @@ def run_res_payload(
             residual_bytes = b""
             residual_path = None
 
+    # The fidelity benchmark: "original = 100%, ours = ?" - the four-pillar
+    # score (tone / spectrum / bands / loudness) measured the way
+    # tools/fidelity_report.py measures runs from disk.
+    fidelity = _fidelity_block(ledger, best_wav_path, saved)
+
     return {
         "start_corr": start_corr,
         "start_sections": start_sections,
         "start_partials": start_partials,
         "best": dict(ledger["best"]),
+        "fidelity": fidelity,
+        "energy_parity": ledger.get("energy_parity"),
         "trail": trail,
         "sections": sections_tbl,
         "accepted": accepted,

@@ -1,50 +1,23 @@
-"""Math-DAW: Interactive Multi-Track Equation Studio & Viral Math Phonk Suite (Streamlit UI).
+"""Math Studio: RES song-to-equations reverse engineering & sample-test bench.
 
-Features:
-- Viral Math Phonk: The exact Reel equations (#7/10 SINC DROP, Modulo Cowbell, Logistic 808, etc.)
-- Math-DAW Studio: Live multi-track equation mixer with real-time waveform decomposition and WAV export
-- Formula Bank Explorer: Acoustic dictionary with live waveform, FFT spectrum & audio preview
-- Spectrogram Math: CQT vs Reassigned vs STFT spectrogram transforms & polyphonic peak extraction
-- Bytebeat Player: paste floatbeat functions and play them in-browser via Web Audio
+Two tabs:
+- RES: upload a song, the engine reverse-engineers it into editable equations
+  and replays the reconstruction, with per-stem metrics and the full ledger.
+- Benchmarks: the sample-test harness - run labels over the frozen fixture set
+  and read the scoreboard, reproducible from the CLI.
 """
 
 import sys
-import io
 import json
 import os
 import time
-import wave
 from pathlib import Path
-import numpy as np
 
 # Ensure workspace root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import streamlit as st
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import librosa
-import soundfile as sf
-
-from src.math_track_engine import (
-    Project, Track, render,
-    demo_sinc_drop, demo_math_remix, demo_ambient,
-)
-from src.formula_bank import FORMULA_BANK, fit_best_formula_for_segment
-from src.analysis import load_audio
-from src.spectrogram_math import (
-    compute_cqt_spectrogram,
-    compute_reassigned_spectrogram,
-    extract_notes_cqt_polyphonic,
-)
-from src.viral_math_reels import (
-    REEL_EQUATIONS,
-    synthesize_exact_sinc_drop,
-    build_viral_math_phonk_project,
-    render_all_viral_reels,
-)
 
 # ---------------------------------------------------------------------------
 # Premium inline SVG icon system (replaces all emojis)
@@ -172,147 +145,23 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _parse_pattern(pattern_str: str):
-    """Parse comma-separated MIDI pattern string."""
-    if not pattern_str.strip():
-        return None
-    items = []
-    for item in pattern_str.split(","):
-        item = item.strip()
-        if item.lower() in ("none", "rest", "_", "-", ""):
-            items.append(None)
-        else:
-            try:
-                items.append(int(item))
-            except ValueError:
-                items.append(None)
-    return items if items else None
+class _DemoClip:
+    """File-like stand-in so one button feeds the pipeline a frozen fixture.
 
-
-def _pattern_to_str(pattern) -> str:
-    """Format pattern list to string."""
-    if not pattern:
-        return ""
-    return ", ".join("None" if p is None else str(p) for p in pattern)
-
-
-def _build_project(bpm_val: float = 140.0, dur_val: float = 6.0, seed_val: int = 7) -> Project:
-    """Reconstruct Project from current session state."""
-    tracks_data = st.session_state.get("tracks", [])
-    p = Project(
-        bpm=st.session_state.get("bpm", bpm_val),
-        duration=st.session_state.get("duration", dur_val),
-        seed=seed_val,
-    )
-    for tr in tracks_data:
-        p.add(
-            name=tr["name"],
-            equation=tr["equation"],
-            pattern=tr.get("pattern"),
-            gain=tr.get("gain", 1.0),
-            pan=tr.get("pan", 0.0),
-        )
-    return p
-
-
-def _render_bytebeat_player(suffix: str = "") -> None:
-    """Render the self-contained Web Audio bytebeat player.
-
-    Suffix parametrizes widget/session keys so multiple independent copies
-    can live in different tabs.
+    The vocals stem is the flattering demo: its scoreboard numbers are
+    committed alongside their ledgers, and it reconstructs audibly well.
     """
-    import streamlit.components.v1 as components
 
-    code_key = f"bb_code{suffix}"
-    preset_key = f"bb_preset{suffix}"
+    name = "demo_stem_vocals.wav"
+    type = "audio/wav"
 
-    BB_VIDEO_EQ = "x=t/8000*2,(3.2*Math.exp(-.5*(x%4))*(1-(2*((x%1)-1))**2)-1.6)/8"
-    BB_PHONK = (
-        "S=8000,B=60/140*S,\n"
-        "K=Math.exp(-(t%B)/140)*Math.sin(6.283*48*t/S),\n"
-        "N=[55,55,65.41,49][((t/(B/2))|0)%4],\n"
-        "W=Math.tanh(2.5*Math.sin(6.283*N*t/S))*Math.exp(-(t%(B/2))/700),\n"
-        "A=[220,277.18,329.63,440,329.63,277.18][((t/(B/4))|0)%6],\n"
-        "L=.5*Math.sin(6.283*A*t/S+2*Math.sin(12.566*A*t/S))*Math.exp(-(t%(B/4))/300),\n"
-        "H=((t*15923%997)/997-.5)*Math.exp(-(t%(B/4))/70),\n"
-        "(K+W+L*.8+H*.5)/3"
-    )
-    bb_presets = {
-        "Video equation (math remix)": BB_VIDEO_EQ,
-        "Math phonk loop": BB_PHONK,
-    }
-    ai_remake = Path("data/output/video_remake/audio_bytebeat.txt")
-    if ai_remake.exists():
-        try:
-            lines = [
-                ln for ln in ai_remake.read_text(encoding="utf-8").splitlines()
-                if not ln.startswith("//")
-            ]
-            if lines:
-                bb_presets["AI remake of your video song"] = "\n".join(lines)
-        except Exception:
-            pass
+    def getvalue(self) -> bytes:
+        return (Path(__file__).resolve().parent / "data" / "output"
+                / "_fixtures" / "stem_vocals.wav").read_bytes()
 
-    preset_name = st.selectbox("Preset function", list(bb_presets.keys()), key=f"bb_preset_sel{suffix}")
-    if code_key not in st.session_state or st.session_state.get(preset_key) != preset_name:
-        st.session_state[code_key] = bb_presets[preset_name]
-        st.session_state[preset_key] = preset_name
-
-    bb_code = st.text_area(
-        "Floatbeat function f(t) → sample in [-1, 1]",
-        value=st.session_state[code_key],
-        height=220,
-        key=f"bb_code_area{suffix}",
-    )
-    st.session_state[code_key] = bb_code
-
-    col_bb1, col_bb2 = st.columns([1, 3])
-    with col_bb1:
-        bb_dur = st.slider("Play length (seconds)", 2.0, 30.0, 8.0, step=1.0, key=f"bb_dur{suffix}")
-    with col_bb2:
-        st.download_button(
-            "Download function (.txt)",
-            data=bb_code,
-            file_name="bytebeat_function.txt",
-            mime="text/plain",
-            key=f"bb_dl{suffix}",
-        )
-
-    play_svg = svg_icon("play", size=15, color="#ffffff").replace("margin-right:7px;", "")
-    stop_svg = svg_icon("stop", size=15, color="#ffffff").replace("margin-right:7px;", "")
-    bb_html = (
-        "<button id='bb_play" + suffix + "' style='font-size:16px;padding:6px 18px;'>" + play_svg + " Play</button> "
-        "<button id='bb_stop" + suffix + "' style='font-size:16px;padding:6px 18px;'>" + stop_svg + " Stop</button> "
-        "<label>Vol <input id='bb_vol" + suffix + "' type='range' min='0' max='100' value='70'></label> "
-        "<span id='bb_status" + suffix + "' style='margin-left:10px;'></span>"
-        "<script>"
-        "let bbCtx" + suffix + "=null,bbSrc" + suffix + "=null;"
-        "const BB_CODE=" + json.dumps(bb_code) + ";"
-        "const BB_DUR=" + json.dumps(float(bb_dur)) + ";"
-        "const BB_SR=8000;"
-        "function bbStop" + suffix + "(){if(bbSrc" + suffix + "){try{bbSrc" + suffix + ".stop();}catch(e){}bbSrc" + suffix + "=null;}}"
-        "document.getElementById('bb_play" + suffix + "').onclick=()=>{try{"
-        "if(!bbCtx" + suffix + ")bbCtx" + suffix + "=new (window.AudioContext||window.webkitAudioContext)();"
-        "if(bbCtx" + suffix + ".state==='suspended')bbCtx" + suffix + ".resume();"
-        "bbStop" + suffix + "();"
-        "const fn=new Function('t','return ('+BB_CODE+')');"
-        "const n=Math.floor(BB_SR*BB_DUR);"
-        "const buf=bbCtx" + suffix + ".createBuffer(1,n,BB_SR);"
-        "const d=buf.getChannelData(0);"
-        "for(let t=0;t<n;t++){let v=fn(t);"
-        "d[t]=Math.max(-1,Math.min(1,(typeof v==='number'&&isFinite(v))?v:0));}"
-        "bbSrc" + suffix + "=bbCtx" + suffix + ".createBufferSource();bbSrc" + suffix + ".buffer=buf;"
-        "const g=bbCtx" + suffix + ".createGain();"
-        "g.gain.value=document.getElementById('bb_vol" + suffix + "').value/100;"
-        "bbSrc" + suffix + ".connect(g);g.connect(bbCtx" + suffix + ".destination);bbSrc" + suffix + ".start();"
-        "document.getElementById('bb_status" + suffix + "').textContent='playing '+BB_DUR+'s @ 8000Hz';"
-        "}catch(e){document.getElementById('bb_status" + suffix + "').textContent='Error: '+e.message;}};"
-        "document.getElementById('bb_stop" + suffix + "').onclick=()=>{bbStop" + suffix + "();"
-        "document.getElementById('bb_status" + suffix + "').textContent='stopped';};"
-        "</script>"
-    )
-    components.html(bb_html, height=120)
-    st.caption("Tip: switch presets or edit the code, then press Play. Nothing is uploaded anywhere.")
+    @property
+    def size(self) -> int:
+        return len(self.getvalue())
 
 
 def _estimate_seconds(dur: float, iters: int, stems: str, bank: bool) -> float:
@@ -349,31 +198,56 @@ def _audio_player(data: bytes, mime: str = "audio/wav", height: int = 54) -> Non
     )
 
 
-def _audio_to_bytes(y: np.ndarray, sr: int = 44100) -> bytes:
-    """Convert float audio array into 16-bit PCM WAV bytes."""
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sr)
-        peak = np.max(np.abs(y))
-        y_norm = y / (peak + 1e-12) * 0.9 if peak > 1.0 else y
-        pcm = (np.clip(y_norm, -1.0, 1.0) * 32767).astype(np.int16)
-        wf.writeframes(pcm.tobytes())
-    buf.seek(0)
-    return buf.getvalue()
-
-
 def _res_render_results(p: dict) -> None:
     """Render the original -> equations -> recreation story from a RES payload."""
     b = p["best"]
     lsd = b.get("log_spectral_distance_db")
-    m1, m2, m3, m4, m5 = st.columns(5)
+    fid = p.get("fidelity")
+
+    # The headline: how far the reconstruction sits from the original.
+    if fid:
+        st.markdown(
+            f"<div style='background:linear-gradient(90deg, rgba(255,0,127,.12),"
+            f"rgba(102,252,241,.08));border:1px solid rgba(102,252,241,.35);"
+            f"border-radius:10px;padding:0.9rem 1.2rem;margin-bottom:0.4rem;'>"
+            f"<span style='font-size:1.55rem;font-weight:800;color:#66fcf1;'>"
+            f"Ours = {fid['fidelity_pct']:.1f}% of the original</span>"
+            f"<span style='color:#c5c6c7;font-size:1rem;'> &nbsp;·&nbsp; "
+            f"distance {fid['distance_pct']:.1f}%</span></div>",
+            unsafe_allow_html=True,
+        )
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("tone (waveform)", f"{fid['tone_pct']:.1f}%")
+        p2.metric("spectrum (MR-STFT)", f"{fid['spectrum_pct']:.1f}%")
+        p3.metric("bands (coverage)", f"{fid['band_pct']:.1f}%")
+        p4.metric("loudness", f"{fid['loudness_pct']:.1f}%")
+        st.caption(
+            "Original = 100%. Pillars: waveform shape, spectral shape, "
+            "energy-weighted band agreement, loudness parity. "
+            "`python tools/fidelity_report.py <run-dir>` reproduces this "
+            "from disk."
+        )
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("correlation", f"{b['correlation']:.4f}")
     m2.metric("SNR", f"{b['snr_db']:.2f} dB")
     m3.metric("LSD", "n/a" if lsd is None else f"{lsd:.2f} dB")
     m4.metric("segmental SNR", f"{(b.get('seg_snr_db') or 0.0):.2f} dB")
     m5.metric("onset corr", f"{(b.get('onset_corr') or 0.0):.3f}")
+    m6.metric("MR-STFT", "n/a" if b.get("mrstft_db") is None
+              else f"{b['mrstft_db']:.2f} dB")
+    bc = b.get("band_corr")
+    if bc:
+        st.caption(
+            "band agreement (corr): "
+            + " · ".join(f"{k} {v:.2f}" for k, v in bc.items())
+        )
+    ep = p.get("energy_parity") or {}
+    if ep.get("applied"):
+        st.caption(
+            f"loudness parity applied ({ep.get('mode')}): per-section gains "
+            + ", ".join(f"{g:.2f}" for g in ep.get("gains", []))
+        )
     st.caption(
         f"equation classes in the final model: "
         f"{', '.join(p['equation_classes']) or 'damped_cosine'}"
@@ -490,12 +364,6 @@ def _res_render_results(p: dict) -> None:
     d3.caption(f"ledger: `{p['ledger_path']}` · recreated WAV: `{p['best_wav']}`")
 
 
-# ---------------------------------------------------------------------------
-# Sidebar: Project controls & presets
-# ---------------------------------------------------------------------------
-# ===========================================================================
-# TAB 0: RES - Song -> Equations -> Replay (the agentic loop)
-# ===========================================================================
 # ---------------------------------------------------------------------------
 # Navigation Tabs
 # ---------------------------------------------------------------------------
@@ -651,6 +519,16 @@ with tab_res:
             "Song (mp3 / wav / ogg / flac)",
             type=["mp3", "wav", "ogg", "flac", "m4a"], key="res_upload",
         )
+        # A button click only survives its own rerun, so the loaded demo
+        # lives in session state; a real upload always wins over it.
+        if up is None and st.button(
+            "Try the built-in demo (15 s vocals stem)", key="res_demo_btn"
+        ):
+            st.session_state["res_demo_loaded"] = True
+        if up is None and st.session_state.get("res_demo_loaded"):
+            up = _DemoClip()
+            st.caption("Demo clip loaded - press Recreate, or upload your own "
+                       "song to replace it.")
         # Play the upload from disk so the <audio> URL stays stable across
         # re-renders (passing bytes makes Streamlit mint a new media file each
         # time, and the browser then restarts playback from zero).
@@ -715,6 +593,19 @@ with tab_res:
                 help="Let stochastic bursts be accepted on log-spectral "
                      "distance instead of waveform correlation.",
             )
+        res_parity = st.toggle(
+            "Loudness parity", value=True, key="res_parity",
+            help="Refit the shipped render's loudness per section. The "
+                 "referee's correlation is scale-invariant, so without this "
+                 "a render can ship far too quiet. (Stem mode ignores it.)",
+        )
+        res_parity_mode = st.radio(
+            "Parity mode", ["rms", "ls"], index=0, key="res_parity_mode",
+            horizontal=True,
+            help="rms = loudness parity - 'sounds like the original' "
+                 "(recommended for listening). ls = least-squares gain, "
+                 "SNR-optimal, but lands the render at corr x source RMS.",
+        )
 
         from src.res_ui import demucs_status
         demucs_ok, demucs_msg = demucs_status()
@@ -801,10 +692,13 @@ with tab_res:
     if run_pressed and up is not None:
         from src.res_ui import spawn_job
         key = (f"{up.name}:{up.size}:{round(res_dur)}:{res_iters}:{res_bank}"
-               f":{res_stems}:{res_noise}:{res_lane}")
+               f":{res_stems}:{res_noise}:{res_lane}:{res_parity}:"
+               f"{res_parity_mode}")
         spawn_job(key, up.getvalue(), up.name, res_dur, res_iters, res_bank,
                   root=Path(__file__).resolve().parent, stem_mode=res_stems,
-                  enable_noise=res_noise, spectral_lane=res_lane)
+                  enable_noise=res_noise, spectral_lane=res_lane,
+                  energy_parity=bool(res_parity) and res_stems == "none",
+                  parity_mode=res_parity_mode)
         st.rerun()
 
     from src.res_ui import done_job as _done_job
@@ -812,21 +706,3 @@ with tab_res:
     if _done:
         _res_render_results(_done["payload"])
 
-# ===========================================================================
-# TAB 1: Viral Math Phonk (The Exact Reel Equations)
-# ===========================================================================
-# ===========================================================================
-# TAB 6: Song A/B (original vs recreation vs error-corrected)
-# ===========================================================================
-# ===========================================================================
-# TAB 3: Formula Bank Explorer
-# ===========================================================================
-# ===========================================================================
-# TAB 4: Spectrogram Math (CQT vs Reassigned vs STFT)
-# ===========================================================================
-# ===========================================================================
-# TAB 5: Bytebeat Player (own implementation, Web Audio — no external code)
-# ===========================================================================
-# ===========================================================================
-# TAB 2: Math-DAW Studio
-# ===========================================================================

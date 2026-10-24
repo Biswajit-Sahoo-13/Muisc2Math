@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import math
 import wave
 from pathlib import Path
 
@@ -40,7 +39,10 @@ def test_run_res_payload_end_to_end(tmp_path):
     )
     assert p["trail"], "payload must carry the iteration trail"
     assert len(p["trail"]) == 2
-    assert p["best"]["correlation"] >= p["start_corr"] - 1e-9
+    # The ledger's best scores the SHIPPED render (OLA crossfades + seam
+    # repair), which differs from the in-loop internal render by the seam
+    # treatment - tiny, but not bit-exact.
+    assert p["best"]["correlation"] >= p["start_corr"] - 0.005
     assert p["best"]["correlation"] > 0.8
     assert p["sections"] and p["sections"][0]["partials"] > 0
     assert "section 0" in p["equations"]
@@ -56,3 +58,31 @@ def test_run_res_payload_end_to_end(tmp_path):
         frames = wf.getnframes()
         assert abs(frames / wf.getframerate() - p["duration"]) < 0.05
     assert p["duration"] <= 1.0 + 1e-6
+
+
+def test_run_res_payload_carries_fidelity_and_parity(tmp_path):
+    """The web payload must carry the fidelity benchmark and the parity
+    record, so the page can show 'ours = X% of the original'."""
+    import pytest
+
+    from src.res_ui import run_res_payload
+
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    blob = _chord_wav(tmp_path)
+    p = run_res_payload(
+        blob, "chord.wav", duration=1.0, iterations=1, bank=False,
+        root=root, energy_parity=True, parity_mode="rms",
+    )
+    fid = p.get("fidelity")
+    assert fid, "the payload must carry the fidelity benchmark"
+    assert {"fidelity_pct", "distance_pct", "tone_pct", "spectrum_pct",
+            "band_pct", "loudness_pct"} <= set(fid)
+    # rms parity lands the render at the source loudness on a tonal chord.
+    assert fid["loudness_pct"] > 90.0
+    assert fid["distance_pct"] == pytest.approx(
+        100.0 - fid["fidelity_pct"], abs=0.01
+    )
+    ep = p.get("energy_parity") or {}
+    assert ep.get("applied") is True
+    assert ep.get("mode") == "per-section rms"

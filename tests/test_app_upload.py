@@ -127,5 +127,5 @@ def test_player_html_renders_in_a_frame():
     at.run()
     assert at.exception == [], [str(e.value) for e in at.exception]
     # st.components.v1.html renders an iframe; the app must not raise
-    htmls = [h.value for h in at.get("component_instance") ] if hasattr(at, "get") else []
+    [h.value for h in at.get("component_instance") ] if hasattr(at, "get") else []
     assert True  # DOM-level assertion is covered by the Playwright probe

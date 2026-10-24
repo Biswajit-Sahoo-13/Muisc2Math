@@ -97,3 +97,28 @@ def test_upload_path_is_reachable():
     src = APP.read_text(encoding="utf-8")
     assert "up.getvalue()" in src, "the full-song upload player is missing"
     assert 'key="res_upload"' in src
+
+
+def test_demo_clip_control_exists():
+    """The one-click demo: a visitor must be able to try the engine without
+    bringing a file. The fixture is tracked, so the demo works from any
+    checkout (and any host) without configuration."""
+    src = APP.read_text(encoding="utf-8")
+    assert 'key="res_demo_btn"' in src, "the demo button is missing"
+    assert "demo_stem_vocals.wav" in src
+    assert (APP.parent / "data" / "output" / "_fixtures"
+            / "stem_vocals.wav").exists(), (
+        "the demo fixture must stay tracked for the demo to work")
+
+
+def test_fidelity_benchmark_and_parity_controls_exist():
+    """The page must let a visitor test the two things the project measures:
+    how far the render sits from the original (fidelity benchmark), and the
+    loudness-parity control that closes part of that distance."""
+    src = APP.read_text(encoding="utf-8")
+    assert 'key="res_parity"' in src, "the loudness-parity toggle is missing"
+    assert 'key="res_parity_mode"' in src, "the parity-mode selector is missing"
+    assert "of the original" in src, "the fidelity banner is missing"
+    assert "distance" in src and "fidelity_pct" in src
+    # The parity mode must actually reach the job spawner.
+    assert "parity_mode=res_parity_mode" in src
