@@ -1,6 +1,7 @@
 # M2M (RES): Mathematical Audio Reverse Engineering and Multi-Formula Studio
 
 <p align="left">
+  <a href="https://github.com/Biswajit-Sahoo-13/Muisc2Math/actions/workflows/ci.yml"><img src="https://github.com/Biswajit-Sahoo-13/Muisc2Math/actions/workflows/ci.yml/badge.svg" alt="CI: lint + 3-OS test matrix + provenance + wheel" /></a>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/Framework-Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit" />
   <img src="https://img.shields.io/badge/DSP-librosa%20%7C%20scipy%20%7C%20soundfile-005571?style=flat-square&logo=scipy&logoColor=white" alt="DSP Core" />
