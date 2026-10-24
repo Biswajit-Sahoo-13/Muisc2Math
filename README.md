@@ -372,6 +372,14 @@ Two of them must never be mixed up:
 - **Real material: 0.4107 – 0.8518.** This is the *engine's* limit on
   material that is not.
 
+**The 2026-10-25 metrics upgrade** adds three first-class measures to
+every ledger: the **fidelity benchmark** (`src/fidelity.py` — the
+original = 100%, from four pillars: tone / spectrum / bands / loudness),
+**MR-STFT** (multi-resolution spectral distance — sees textural errors a
+single window misses) and **band_corr** (per-band correlation — *where*
+in the spectrum the error lives). The benchmark table with the measured
+extremes is in [The Fidelity Benchmark and the Exact Mode](#the-fidelity-benchmark-and-the-exact-mode).
+
 ---
 
 ### Performance and footprint
@@ -404,6 +412,14 @@ Every figure below is measured by `tools/bottleneck_scoreboard.py` on a frozen f
 - **Percussion is the hard case.** A drum stem reconstructs at **0.4107 correlation / LSD 18.04 dB**: a kick, a snare and a hi-hat are not sums of sinusoids, and even at 12 hits per section the percussive class can only afford 6 modes per hit. This is a modelling limit, not a renderer limit.
 - **The renderer/analyser replica invariant is now enforced by test.** `tests/test_res_replica.py` compares the analyser's own output against the RES render of the *same* fitted parameters — the only comparison that can detect a replica gap, since the loop overwrites each section's recorded metric with the RES renderer's own score. `tests/test_res_phase_origin.py` pins the phase re-referencing law and the section-assignment rule.
 - **Where the +0.8437 recovery came from, measured.** Reverting one file at a time to the release commit attributes it to the phase re-referencing in `src/res_evidence.py`, not to the acceptance gate. The class-C gate is worth **+0.0341** on the full mix and is **negative (−0.0087) on the drum stem**; the remaining **+0.8095** is the phase-origin fix. The `baseline_head` and `bisected_d2` labels exist so both claims stay checkable.
+
+**2026-10-25 engine update** (measured in `out/` runs and on the fidelity benchmark; the scoreboard rows above remain the frozen provenance until the new labels finalize — see `docs/PHYSICS_ROADMAP.md`):
+
+- **The drums wall moved.** With real Demucs stems + the stochastic noise physics, the drums stem of *MONA LISA* reconstructs at **0.79 correlation** (was 0.4107 on the drum fixture) — the orthogonality wall is now an input-quality problem, not a modelling one.
+- **The shipped render is de-clicked and at level.** OLA crossfades + smoothstep seam repair (a 13.8× boundary jump removed) and per-section loudness parity (`--energy-parity --parity-mode rms`) are on every shipped render.
+- **The exact mode exists.** Equations + a FLAC-compressed residual reconstruct **99.97%** (exact to below one 16-bit LSB) — the first exact-mode member of the parametric codec family. The ladder: 319 equations at 3.6% of source = 68.7%, + 16-bit residual = 99.97%.
+- **The note layer reads the 808.** Beat pairs (carrier, beat rate, decays), 12-TET snap, and discrete sub-bass note events with their measured attack drop are recorded in every ledger.
+- **The extremes are measured**: a pure 12-TET tonal song hits **86.0%** (the current architecture's ceiling — the remaining 14% is attack/envelope physics), a pure noise-percussion song **4.8%** (the information-theoretic floor).
 
 ---
 
