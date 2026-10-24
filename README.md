@@ -53,49 +53,58 @@
 
 ## System Pipeline Architecture
 
-The M2M (RES) engine transforms unconstrained waveforms into closed-form mathematical equations and reconstructs the auditory experience through additive and stochastic resynthesis:
+The project ships **two engines sharing one analysis front-end**. The flagship is the **RES production pipeline** (`main.py res`) — the one the fidelity benchmark scores. The **Equation Discovery Engine** (`main.py discover-equations`) is the symbolic-regression subsystem for formula hunting.
+
+### The RES production pipeline (2026-10-25)
+
+What `main.py res` actually runs, including the note layer, the stochastic noise physics, the referee, and the exact mode:
+
+```mermaid
+flowchart TD
+    A["Raw Audio Input x(t)"] --> S["Stem Separation (optional)<br/>Demucs or HPSS band split"]
+
+    subgraph Evidence ["1. Evidence (beat-aware)"]
+        S --> B["Multi-Resolution Analysis<br/>(CQT + Reassigned STFT + STFT)"]
+        B --> C["Polyphonic Peak Tracking & Salience"]
+        C --> E["Beat-Aware Sections +<br/>First-Pass Partials (evidence ledger)"]
+    end
+
+    subgraph Loop ["2. The Loop (per section, per iteration)"]
+        E --> L1["Coordinate Lifter<br/>(amplitude, phase, decay, frequency)"]
+        L1 --> J1["Joint TRF Refiner (optional)<br/>collision clusters < 10 Hz"]
+        J1 --> T["Hypothesis Tournament<br/>harmonic strings - percussive bundles<br/>filtered/LPC noise + band-envelope layers"]
+        T --> R{"Referee<br/>corr + LSD + onset gates<br/>(spectral lane for stochastic classes)"}
+        R -->|accepted| K["Commit + ledger receipt"]
+        R -->|rejected| L1
+        K --> NL["Note Layer: beat pairs,<br/>12-TET snap, 808 note events"]
+        K --> CH["Chase: noise-layer matching pursuit<br/>on the remaining residual"]
+    end
+
+    subgraph Ship ["3. Shipped Render + Benchmark"]
+        K --> O["OLA Crossfades + Smoothstep<br/>Seam Repair (de-click)"]
+        O --> P["Loudness Parity<br/>(per-section gain, rms or ls)"]
+        P --> Q["Fidelity Benchmark<br/>tone - spectrum - bands - loudness<br/>(original = 100%)"]
+        Q --> OUT1["Equation Sheet<br/>(~3.6% of source, ~70% fidelity)"]
+        Q --> OUT2["Exact Mode<br/>+ FLAC residual = 99.97%"]
+    end
+```
+
+### The Equation Discovery path (`main.py discover-equations`)
+
+The symbolic-regression subsystem hunts closed-form formulas (Pareto trade-off between fit error and expression complexity) — the path the bytebeat and formula-bank tools build on:
 
 ```mermaid
 flowchart TD
     A["Raw Audio Input x(t)"] --> B["Multi-Resolution DSP Analysis"]
-    
-    subgraph Analysis ["1. Spectrogram Analysis & Tracking"]
-        B --> B1["Constant-Q Transform (Logarithmic Scale)"]
-        B --> B2["Reassigned Spectrogram (Phase Derivatives)"]
-        B --> B3["STFT (Harmonic Overtone Verification)"]
-        B1 --> C["Polyphonic Peak Tracking & Salience"]
-        B2 --> C
-        B3 --> C
-    end
-
-    subgraph Discovery ["2. M2M Equation Discovery Engine"]
-        C --> D1["Tier 1: Acoustic Formula Bank"]
-        C --> D2["Tier 2: Symbolic Regression (Genetic Search)"]
-        C --> D3["Tier 3: Dynamic & Bytebeat Generators"]
-        D1 --> E["Beam Search & L-BFGS-B Optimization"]
-        D2 --> E
-        D3 --> E
-        E --> F["Pareto Front Selection (MSE vs AST Complexity)"]
-    end
-
-    subgraph Resynthesis ["3. High-Fidelity Resynthesis (SMS)"]
-        F --> G1["Sinusoidal Deterministic Tracks"]
-        F --> G2["Transient Hann OLA Crossfade"]
-        F --> G3["Gated LPC Residual Noise Model"]
-        G1 --> H["Additive Synthesizer"]
-        G2 --> H
-        G3 --> H
-        H --> I["Reconstructed Audio x^(t)"]
-    end
-
-    subgraph ClosedLoop ["4. Closed-Loop Error Correction"]
-        I --> J["Level Normalization (RMS Matching)"]
-        J --> K["FFT Cross-Correlation Time Alignment"]
-        K --> L["Segmented Residual Refinement"]
-        L --> M{"Energy Guard & LSD Validation"}
-        M -->|Accepted| N["Master Reconstructed WAV & JSON Equations"]
-        M -->|Rejected| E
-    end
+    B --> C["Polyphonic Peak Tracking & Salience"]
+    C --> D1["Tier 1: Acoustic Formula Bank"]
+    C --> D2["Tier 2: Symbolic Regression (Genetic Search)"]
+    C --> D3["Tier 3: Dynamic & Bytebeat Generators"]
+    D1 --> E["Beam Search & L-BFGS-B Optimization"]
+    D2 --> E
+    D3 --> E
+    E --> F["Pareto Front Selection (MSE vs AST Complexity)"]
+    F --> G["Formula JSON + Rendered Audio"]
 ```
 
 ---
