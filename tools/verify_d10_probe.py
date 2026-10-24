@@ -73,9 +73,8 @@ def main() -> None:
         workers=1,
     )
 
-    partials = np.asarray(res["partials"], dtype=float)
-    freqs = np.sort(partials[:, 0]) if partials.size else np.array([])
-    amps_min = float(np.min(partials[:, 1])) if partials.size else 0.0
+    partial_freqs = [float(track["frequency"]) for track in res["fitted_parameters"]]
+    freqs = np.sort(np.asarray(partial_freqs, dtype=float))
 
     near = lambda f: any(
         abs(f - m * VIBRATO_F0) <= FREQ_TOL for m in range(1, VIBRATO_HARMONICS + 1)
@@ -108,7 +107,6 @@ def main() -> None:
     missing = [m for m in range(1, VIBRATO_HARMONICS + 1) if not tracked[m]]
     print("")
     print(f"harmonics absent    : {missing if missing else 'none'}")
-    print(f"amp range           : min={amps_min:.6g}")
 
 
 if __name__ == "__main__":

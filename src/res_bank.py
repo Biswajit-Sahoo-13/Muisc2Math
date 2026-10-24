@@ -23,14 +23,27 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import os
+
 import numpy as np
 import scipy.linalg
 import scipy.signal
 from scipy.optimize import minimize_scalar
 
+from src.res_percussive import (
+    broadband_envelope,
+    resonant_burst_hypothesis,
+    spectral_log_distance,
+)
 from src.res_synthesis import _corr, _render_partial, _support_mask
 
 _E_REL_MARGIN = 1e-6  # relative residual-energy improvement to accept
+# The exciter: the broadband strike that excites a percussive hit's
+# modes. Off by default. A broadband component cannot be judged by a
+# waveform error, so switching it on changes what the bank optimises
+# and the published numbers have to be re-measured before it ships.
+_EXCITER_ENABLED = os.environ.get("M2M_EXCITER", "0") == "1"
+
 _NOISE_K = 4.0  # overfit guard: expected drop from p random params ~ p*sigma^2
 
 # Whether a class-B (harmonic string) note is one-sided, i.e. silent before
@@ -751,7 +764,6 @@ def percussive_bundle(
     span = int(min(window_s * sr, max(n - hit, 0)))
     if span < 128:
         return _Variant([], float(np.sum(target ** 2)), 0, 0.0, 0.0, hit_t)
-    w = target[hit:hit + span]
     t_attack = max(int(0.06 * sr), 512)
     span_atk = min(t_attack, span)
     # Difference spectrum: sustained partials appear in both the attack and
@@ -858,11 +870,29 @@ def percussive_bundle(
     keep = [p for p in partials if float(p["amplitude"]) >= max(1e-4, 0.05 * a_max)]
     if not keep:
         return _Variant([], float(np.sum(target ** 2)), 0, 0.0, 0.0, hit_t)
+    # The exciter: what the modes did not explain is the strike itself.
+    # It is broadband, so the median of each band of the difference
+    # spectrum is its level, and the narrow modal peaks are ignored.
+    #
+    # A broadband component cannot be judged by a waveform error: two
+    # realisations of noise are uncorrelated, so adding a burst always
+    # raises the time-domain error even when it is exactly the right
+    # spectrum. The choice is therefore made on the spectral distance,
+    # and the flag keeps it off by default so the published numbers do
+    # not move until the referee can see it.
+    burst = None
+    if _EXCITER_ENABLED:
+        try:
+            bc, bm = broadband_envelope(mw, bins, band_lo=band_lo)
+            burst = resonant_burst_hypothesis(
+                w_cur, sr, start_sample, stft_half_window_s, hit_sample,
+                bc, bm, seed=(int(start_sample) * 131 + int(hit_sample)) % (2 ** 31 - 1),
+            )
+        except Exception:
+            burst = None
     # Measure against the FULL section grid through the real per-partial
     # support path, so the score is directly comparable with the state render
     # the acceptance gate will re-measure anyway.
-    t_full = (np.arange(n, dtype=np.float64) + start_sample) / sr
-    t_fit_full = np.arange(n, dtype=np.float64) / sr
     sig = np.zeros(n)
     for p in keep:
         sig += _render_partial(
@@ -870,6 +900,18 @@ def percussive_bundle(
             stft_half_window_s=stft_half_window_s,
         )
     err = float(np.sum((target - sig) ** 2))
+    if burst is not None:
+        sig_b = sig + _render_partial(
+            burst, n, sr, start_sample=start_sample,
+            stft_half_window_s=stft_half_window_s,
+        )
+        # Keep the burst only if it is the better model *spectrally*.
+        d_without = spectral_log_distance(target, sig)
+        d_with = spectral_log_distance(target, sig_b)
+        if d_with < d_without:
+            keep = keep + [burst]
+            sig = sig_b
+            err = float(np.sum((target - sig) ** 2))
     params = 1 + 3 * len(keep)
     return _Variant(keep, err, params, 0.0, 0.0, hit_t)
 
@@ -968,12 +1010,9 @@ def hf_log_spectral_distance(
     2.4e8 as the burst level rose, while log-spectral distance fell by 12.9 dB.
     Spectral fidelity has to be judged in the magnitude domain.
     """
-    from src.residual import compute_error_metrics
 
     if len(y) < n_fft:
         return float("inf")
-    full = compute_error_metrics(y, r, sr=sr, n_fft=n_fft,
-                                 hop_length=hop_length)
     freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
     sel = freqs >= hf_hz
     if sel.sum() < 2:
@@ -1264,10 +1303,11 @@ Acceptance is instead judged primarily in the magnitude domain: overall
     a fitted physical quantity (LPC noise) must be scaled relatively, or the
     ladder would replace a measured level with an arbitrary one.
     """
-    from src.residual import compute_error_metrics
 
     if not fresh:
         return False, cur_err, cur_corr
+    from src.residual import compute_error_metrics
+
     keep = list(partials)
     render_prev = render_state()
     lsd_before = compute_error_metrics(
@@ -1359,7 +1399,6 @@ spectral: bool = False,
     ):
         return False, cur_err, cur_corr
     keep = list(partials)
-    render_prev = render_state()
     partials.extend(fresh)
     render = render_state()
     resid_after = y_sec - render
@@ -1491,31 +1530,6 @@ def tournament_section(
             y_sec, partials, fresh, vari.param_count, vari.err,
             e_y, cur_err, cur_corr, state, sr=sr,
         )
-        if not ok:
-            # A percussive mode cannot improve waveform correlation - it is a
-            # fast-decay burst, and correlation demands sample-exact phase
-            # coherence that a burst against real percussion never achieves.
-            # The time-domain gate therefore refuses candidates that clearly
-            # reduce residual energy. Read on the drums stem: every
-            # percussive bundle was rejected with residual_after ==
-            # residual_before, while the envelope magnitude (LSD 18.40 dB)
-            # was the largest single error in the suite.
-            #
-            # So the magnitude domain gets the vote - but the candidate must
-            # still REDUCE the time-domain residual, which is the part of the
-            # time-domain gate that does work for percussion and the part
-            # that stops the bank chasing noise. The energy margin is checked
-            # first: a candidate that cannot beat the overfit guard is not
-            # evidence of anything, in either domain.
-            if vari.err < cur_err - acceptance_margin(
-                e_y, cur_err, vari.param_count, len(y_sec)
-            ):
-                ok, err_after, corr_after = _accept_spectral(
-                    y_sec, partials, fresh, cur_err, cur_corr, state, sr=sr,
-                    gain_ladder=None, corr_floor=corr_floor,
-                    corr_floor_mode="relative", corr_max_drop=corr_max_drop,
-                    relative=True, require_error_drop=True,
-                )
         if ok:
             cur_err, cur_corr = err_after, corr_after
         rec: Dict[str, Any] = {
@@ -1541,6 +1555,23 @@ def tournament_section(
                 y_sec, partials, fresh, vari_noise.param_count, vari_noise.err,
                 e_y, cur_err, cur_corr, state, sr=sr,
             )
+            if not ok and _EXCITER_ENABLED and any(
+                p.get("model") in ("filtered_noise", "lpc_noise") for p in fresh
+            ):
+                # A candidate that carries a stochastic component cannot be
+                # judged by a waveform error. Adding noise raises the squared
+                # time-domain error by definition, even while it lowers the
+                # spectral error, and waveform correlation demands sample-exact
+                # alignment that random-phase noise can never achieve against
+                # real noise. The noise classes already have the spectral lane
+                # for exactly this; without it the exciter can never be
+                # accepted, however right it is.
+                ok, err_after, corr_after = _accept_spectral(
+                    y_sec, partials, fresh, cur_err, cur_corr, state, sr=sr,
+                    gain_ladder=None, corr_floor=0.0,
+                    corr_floor_mode="relative", corr_max_drop=0.05,
+                    relative=True,
+                )
             if ok:
                 cur_err, cur_corr = err_after, corr_after
             records.append({

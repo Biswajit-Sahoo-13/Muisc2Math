@@ -7,13 +7,13 @@ support masking, and referee metrics, used across both the coordinate lifter
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import scipy.signal
 from scipy.signal import hilbert
 
-from src.sinusoidal_model import _quadratic_phase_correction, _smooth_envelope
+from src.sinusoidal_model import _trajectories
 from src.residual import compute_error_metrics, segmental_snr_db, onset_corr
 
 
@@ -38,31 +38,32 @@ def _glide_traj(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Amplitude + integrated-phase trajectories on an arbitrary global grid.
 
-    Exact replica of sinusoidal_model._trajectories (3-frame median-smoothed
+    Delegates to sinusoidal_model._trajectories (3-frame median-smoothed
     frequency for the integral, 5-frame-smoothed amplitude, and the same
-    analytical intra-frame phase correction), evaluated on ``t`` so
-    section-offset renders stay on the global time axis. The two must stay
-    in lockstep: tests/test_res_trajectory_defects.py asserts they agree to
-    1e-11 rad across arbitrary section offsets.
+    analytical intra-frame phase correction) evaluated on ``t`` so
+    section-offset renders stay on the global time axis. One implementation,
+    so analyser and renderer cannot drift;
+    tests/test_res_trajectory_defects.py asserts they agree to 1e-11 rad
+    across arbitrary section offsets.
     """
-    if tt.size == 1:
-        return (
-            np.full(t.size, float(aa[0])),
-            np.zeros(t.size),
-        )
-    f_smooth = _smooth_envelope(ff, 3)
-    a_frames = _smooth_envelope(aa)
-    integral_frames = np.zeros(tt.size, dtype=np.float64)
-    integral_frames[1:] = np.cumsum(
-        2.0 * np.pi * 0.5 * (f_smooth[:-1] + f_smooth[1:]) * np.diff(tt)
-    )
-    a_env = np.interp(t, tt, a_frames)
-    integral = np.interp(t, tt, integral_frames)
-    integral = integral + _quadratic_phase_correction(t, tt, f_smooth)
+    a_env, integral, _f_traj = _trajectories(tt, ff, aa, grid=t)
     return a_env, integral
 
 
 _WHISTLE_FREQ_HZ = 1000.0
+# Bands/trajectories below this relative level are gated to silence: a
+# mastered recording drops to near-zero between events, and an ungated
+# noise floor hisses there no matter what LSD says. High bands gate
+# harder - gaps above 2 kHz are musically silent, while low-band level
+# 0.2 can be a genuine quiet verse.
+_NOISE_GATE_S = 0.10
+_NOISE_GATE_S_HIGH = 0.30
+_NOISE_GATE_HZ = 2000.0
+
+
+def _noise_gate_for(center_hz: float) -> float:
+    return (_NOISE_GATE_S_HIGH if center_hz >= _NOISE_GATE_HZ
+            else _NOISE_GATE_S)
 _MIN_DECAY_BASE = 2.5
 _MIN_DECAY_SLOPE = 0.002
 _MAX_GLIDE_HZ = 1800.0
@@ -138,6 +139,18 @@ def sanitize_partial(p: Dict[str, Any]) -> Dict[str, Any]:
             if model == "constant":
                 q["model"] = "damped"
     return q
+
+
+def _stochastic_onesided_enabled() -> bool:
+    """Whether a stochastic channel honours one-sidedness and decay.
+
+    Off by default so the shipped numbers do not move until the exciter
+    has been measured. The switch is read per call rather than at import
+    so one process can compare both behaviours.
+    """
+    import os
+
+    return os.environ.get("M2M_EXCITER", "0") == "1"
 
 
 def _support_mask(
@@ -276,7 +289,7 @@ def fit_noise_floor_partial(
     rms = float(np.sqrt(np.mean(x ** 2)))
     if rms <= 1e-6:
         return None
-    return {
+    partial = {
         "model": "filtered_noise",
         "amplitude": round(rms, 6),
         "seed": int(seed),
@@ -289,6 +302,94 @@ def fit_noise_floor_partial(
         "phase": 0.0,
         "frequency": 0.0,
     }
+    # Measure the residual's own level envelope over a few segments. Real
+    # residual noise is transient-modulated (fills, breaths, cymbal decay);
+    # a static floor renders its time-average - correct spectrum, no timing.
+    # Only attach a trajectory when the level is genuinely uneven, so a
+    # stationary floor stays byte-identical to the shipped behaviour.
+    dur = float(end_time) - float(start_time)
+    if dur > 0.0 and x.size >= 2048:
+        # ~50 ms envelope resolution where the section allows it: 16 fixed
+        # segments cannot time a hi-hat pattern (150 ms per step).
+        n_seg = max(16, min(48, int(dur / 0.05)))
+        seg = x.size // n_seg
+        if seg >= 256:
+            t_centers = [
+                float(start_time) + (i + 0.5) * dur / n_seg
+                for i in range(n_seg)
+            ]
+            seg_rms = np.array([
+                float(np.sqrt(np.mean(x[i * seg:(i + 1) * seg] ** 2)))
+                for i in range(n_seg)
+            ])
+            if rms > 1e-12 and float(seg_rms.max()) > 1e-12:
+                shape = seg_rms / rms
+                lo, hi = float(shape.min()), float(shape.max())
+                if hi > 1e-9 and lo / hi < 0.5:
+                    # 3-frame median: single-segment spikes are estimation
+                    # noise, not envelopes (same convention as the glide
+                    # frequency smoothing).
+                    pad = np.concatenate(([shape[0]], shape, [shape[-1]]))
+                    shape_s = np.array([
+                        float(np.median(pad[max(0, i - 1):i + 2]))
+                        for i in range(1, n_seg + 1)
+                    ])
+                    partial["trajectory"] = {
+                        "t": [round(v, 6) for v in t_centers],
+                        "a": [round(float(v), 6) for v in shape_s],
+                    }
+                # Per-band envelopes - the NoiseBandNet idea in closed form.
+                # A cymbal's band switches on when the stick lands while the
+                # bass band never moves; one global envelope cannot express
+                # both. Measure each band's own short-time level; attach
+                # only when some band is genuinely uneven (a flat floor
+                # stays byte-identical to the shipped behaviour).
+                if len(centers) >= 3 and x.size >= 4 * seg:
+                    edges = np.geomspace(max(f_lo, 20.0), sr * 0.5,
+                                         len(centers) + 1)
+                    X = np.fft.rfft(x)
+                    rows = []
+                    uneven = False
+                    for i in range(len(centers)):
+                        mask = (freqs >= edges[i]) & (freqs < edges[i + 1])
+                        if not mask.any():
+                            rows.append(np.ones(n_seg))
+                            continue
+                        xb = np.fft.irfft(X * mask, n=x.size)
+                        rb = np.sqrt(np.mean(
+                            xb[: n_seg * seg].reshape(n_seg, seg) ** 2,
+                            axis=1))
+                        # Normalise to the band's PEAK segment, not its mean:
+                        # gaps must reach ~0 so the render-side gate can
+                        # silence them (measured: mean-normalised envelopes
+                        # never dropped below the gate, and the render kept
+                        # hissing 3.4x the source level in quiet gaps).
+                        peak_b = float(rb.max())
+                        shape_b = (rb / peak_b if peak_b > 1e-12
+                                   else np.ones(n_seg))
+                        pad = np.concatenate(
+                            ([shape_b[0]], shape_b, [shape_b[-1]]))
+                        shape_b = np.array([
+                            float(np.median(pad[max(0, j - 1):j + 2]))
+                            for j in range(1, n_seg + 1)
+                        ])
+                        blo, bhi = float(shape_b.min()), float(shape_b.max())
+                        if bhi > 1e-9 and blo / bhi < 0.4:
+                            uneven = True
+                        rows.append(shape_b)
+                    if uneven:
+                        partial["band_edges"] = [
+                            round(float(v), 2) for v in edges
+                        ]
+                        partial["band_traj"] = {
+                            "t": [round(v, 6) for v in t_centers],
+                            "a": [[round(float(v), 6) for v in row]
+                                  for row in rows],
+                        }
+                        # The per-band envelope supersedes the global one -
+                        # applying both would modulate twice.
+                        partial.pop("trajectory", None)
+    return partial
 
 
 def _render_partial(
@@ -384,7 +485,37 @@ def _render_partial(
             log_bc = np.log10(np.maximum(band_centers, min_f))
             log_bins = np.log10(np.maximum(freq_bins, min_f))
             env_bins = np.interp(log_bins, log_bc, band_mags, left=band_mags[0], right=band_mags[-1])
-            sig = np.fft.irfft(w_fft * env_bins, n=n)
+            shaped = w_fft * env_bins
+            # Per-band envelopes: split the shaped spectrum by the fitted
+            # band edges, ring each band down/up on its own measured
+            # envelope, and sum. This is what turns "stationary hiss" into
+            # a cymbal that strikes when the stick lands.
+            btraj = p.get("band_traj")
+            bedges = p.get("band_edges")
+            used_bands = False
+            if btraj and bedges:
+                tt = np.asarray(btraj.get("t", []), dtype=np.float64)
+                aa = np.asarray(btraj.get("a", []), dtype=np.float64)
+                be = np.asarray(bedges, dtype=np.float64)
+                if (tt.size >= 2 and aa.ndim == 2
+                        and aa.shape[0] == be.size - 1
+                        and aa.shape[1] == tt.size):
+                    sig = np.zeros(n)
+                    for i in range(aa.shape[0]):
+                        mask = (freq_bins >= be[i]) & (freq_bins < be[i + 1])
+                        if not mask.any():
+                            continue
+                        sig_b = np.fft.irfft(shaped * mask, n=n)
+                        env_b = np.interp(
+                            t_full, tt, aa[i], left=aa[i][0], right=aa[i][-1]
+                        )
+                        center = float(np.sqrt(be[i] * be[i + 1]))
+                        gate = _noise_gate_for(center)
+                        env_b = np.where(env_b < gate, 0.0, env_b)
+                        sig += sig_b * np.maximum(env_b, 0.0)
+                    used_bands = True
+            if not used_bands:
+                sig = np.fft.irfft(shaped, n=n)
         else:
             sig = white
         sig_rms = float(np.sqrt(np.mean(sig ** 2)))
@@ -397,6 +528,35 @@ def _render_partial(
         decay = float(p.get("envelope_decay", 0.0))
         if st is not None and et is not None:
             sig = sig * _support_mask(t_full, float(st), float(et), decay, amp, stft_half_window_s)
+        # A one-sided model must not sound before its onset. The support mask's
+        # attack ramp reaches half a STFT window back, so without this a noise
+        # burst carries its energy before the hit it belongs to - the same
+        # defect the bank already avoids on the damped modes.
+        if p.get("unit_step") and _stochastic_onesided_enabled():
+            t0 = float(p.get("envelope_t0", st if st is not None else 0.0))
+            sig = np.where(t_full >= t0, sig, 0.0)
+        # An optional decay turns a stationary noise channel into a burst that
+        # rings down, which is what a struck body does. Zero means stationary,
+        # which is what the noise floor wants.
+        if decay > 0.0 and _stochastic_onesided_enabled():
+            t0 = float(p.get("envelope_t0", st if st is not None else 0.0))
+            sig = sig * np.exp(-decay * np.maximum(t_full - t0, 0.0))
+        # A measured amplitude trajectory redistributes the level in time -
+        # the difference between stationary hiss and an actual fill or
+        # breath. Times are global (same convention as the glide
+        # trajectories); the global RMS stays the partial's amplitude.
+        # A noise gate keeps the gaps silent: real recordings drop to
+        # near-zero between events, and an ungated floor hisses there
+        # (measured 3.4x the source's gap level) no matter what the
+        # spectral metrics say.
+        traj = p.get("trajectory")
+        if traj:
+            tt = np.asarray(traj.get("t", []), dtype=np.float64)
+            aa = np.asarray(traj.get("a", []), dtype=np.float64)
+            if tt.size >= 2 and aa.size == tt.size:
+                env = np.interp(t_full, tt, aa, left=aa[0], right=aa[-1])
+                env = np.where(env < _NOISE_GATE_S, 0.0, env)
+                sig = sig * np.maximum(env, 0.0)
         return sig
 
     if p.get("model") == "lpc_noise":
@@ -423,6 +583,12 @@ def _render_partial(
         decay = float(p.get("envelope_decay", 0.0))
         if st is not None and et is not None:
             sig = sig * _support_mask(t_full, float(st), float(et), decay, amp, stft_half_window_s)
+        if p.get("unit_step") and _stochastic_onesided_enabled():
+            t0 = float(p.get("envelope_t0", st if st is not None else 0.0))
+            sig = np.where(t_full >= t0, sig, 0.0)
+        if decay > 0.0 and _stochastic_onesided_enabled():
+            t0 = float(p.get("envelope_t0", st if st is not None else 0.0))
+            sig = sig * np.exp(-decay * np.maximum(t_full - t0, 0.0))
         return sig
 
     amp = float(p.get("amplitude", 0.0))
@@ -455,14 +621,68 @@ def _render_partial(
 
 def _score(y: np.ndarray, recon: np.ndarray, sr: int) -> Dict[str, float]:
     """Score reconstruction against target with all referee metrics."""
-    m = compute_error_metrics(y, recon, sr=sr)
+    m = compute_error_metrics(y, recon, sr=sr, extras=True)
     return {
         "correlation": round(_corr(y, recon), 6),
         "snr_db": round(float(m["snr_db"]), 3),
         "log_spectral_distance_db": round(float(m["log_spectral_distance_db"]), 3),
         "seg_snr_db": round(segmental_snr_db(y, recon, sr), 3),
         "onset_corr": round(onset_corr(y, recon, sr), 6),
+        "mrstft_db": round(float(m["mrstft_db"]), 3),
+        "band_corr": {k: round(float(v), 4) for k, v in m["band_corr"].items()},
     }
+
+
+def apply_energy_parity(
+    y: np.ndarray,
+    recon: np.ndarray,
+    spans: Sequence[Tuple[int, int]],
+    max_gain: float = 50.0,
+    mode: str = "ls",
+) -> Tuple[np.ndarray, List[float]]:
+    """Refit each span's render level against the source.
+
+    Correlation - the referee's own metric - is scale-invariant, so nothing
+    in the loop enforces loudness: measured, a drums stem shipped its best
+    render at 2.1% of the source energy. Two modes:
+
+    - ``mode="ls"`` (default): the least-squares gain per span, the one
+      that minimises that span's residual energy and therefore maximises
+      SNR. It provably lands the render at ``(correlation) x`` source RMS -
+      SNR-optimal, but a low-corr render ends up sounding too quiet.
+    - ``mode="rms"``: scale the span to the source's RMS - loudness parity,
+      the "sounds like the original" choice, at a small SNR cost when the
+      correlation is low.
+
+    Guards: a (near-)silent render span is left alone, the gain never goes
+    negative (never invert a render) and never exceeds ``max_gain``.
+    """
+    if mode not in ("ls", "rms"):
+        raise ValueError(f"unknown parity mode: {mode!r}")
+    out = np.array(recon, dtype=np.float64, copy=True)
+    gains: List[float] = []
+    for start, end in spans:
+        start, end = int(start), int(end)
+        if not (0 <= start < end <= out.size):
+            gains.append(1.0)
+            continue
+        seg = out[start:end]
+        e_r = float(np.dot(seg, seg))
+        if e_r <= 1e-15:
+            gains.append(1.0)
+            continue
+        if mode == "rms":
+            rms_y = float(np.sqrt(np.mean(y[start:end] ** 2)))
+            rms_r = float(np.sqrt(e_r / (end - start)))
+            g = rms_y / rms_r if rms_y > 1e-12 else 1.0
+        else:
+            g = float(np.dot(y[start:end], seg) / e_r)
+        if not np.isfinite(g):
+            g = 1.0
+        g = min(max(g, 0.0), float(max_gain))
+        out[start:end] = seg * g
+        gains.append(g)
+    return out, gains
 
 
 def align_instantaneous_phase(

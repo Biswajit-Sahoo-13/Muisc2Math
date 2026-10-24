@@ -1,11 +1,10 @@
 """Tests for Phase 2: Time alignment in res_loop."""
 
 import numpy as np
-import pytest
 
 from src.error_correction import find_best_lag, apply_lag
-from src.res_synthesis import _corr, _score
-from src.res_loop import _section_update, run_loop
+from src.res_synthesis import _corr
+from src.res_loop import run_loop
 
 
 def test_time_lag_alignment_direct():

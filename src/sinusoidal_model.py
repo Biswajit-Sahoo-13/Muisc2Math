@@ -39,14 +39,21 @@ def _interp_track(
     values: np.ndarray,
     n_samples: int,
     sr: int,
+    grid: Optional[np.ndarray] = None,
 ) -> np.ndarray:
-    """Linearly interpolate per-frame parameters onto the sample grid."""
+    """Linearly interpolate per-frame parameters onto the sample grid.
+
+    ``grid`` overrides the default ``arange(n_samples)/sr`` axis so callers
+    rendering on a section-offset (global) time axis get identical math.
+    """
+    n_out = n_samples if grid is None else int(grid.size)
     if frame_times.size == 0:
-        return np.zeros(n_samples, dtype=np.float64)
+        return np.zeros(n_out, dtype=np.float64)
     if frame_times.size == 1:
-        return np.full(n_samples, float(values[0]), dtype=np.float64)
-    t_samples = np.arange(n_samples, dtype=np.float64) / sr
-    return np.interp(t_samples, frame_times, values).astype(np.float64)
+        return np.full(n_out, float(values[0]), dtype=np.float64)
+    if grid is None:
+        grid = np.arange(n_samples, dtype=np.float64) / sr
+    return np.interp(grid, frame_times, values).astype(np.float64)
 
 
 def _quadratic_phase_correction(
@@ -230,7 +237,7 @@ def _prepare_frames(track: SinusoidalTrack) -> Tuple[np.ndarray, ...]:
     freqs = np.asarray(track.frequencies, dtype=np.float64)
     amps = np.asarray(track.amplitudes, dtype=np.float64)
     phases = np.asarray(track.phases, dtype=np.float64)
-    med_f = float(np.median(freqs)) if freqs.size else 0.0
+    float(np.median(freqs)) if freqs.size else 0.0
     if freqs.size:
         # Phase 6: Allow wide pitch glides/vibrato (up to 35% of fundamental or 25 Hz)
         # instead of the legacy 2.0 Hz clamp which destroyed 808 pitch glides.
@@ -255,20 +262,26 @@ def _trajectories(
     times: np.ndarray,
     freqs: np.ndarray,
     amps: np.ndarray,
-    n_samples: int,
-    sr: int,
+    n_samples: int = 0,
+    sr: int = 1,
     freq_scale: float = 1.0,
     normalize_amp: bool = False,
+    grid: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return (amplitude, integral, frequency) trajectories on the sample grid."""
+    """Return (amplitude, integral, frequency) trajectories on the sample grid.
+
+    ``grid`` overrides the default ``arange(n_samples)/sr`` axis; the renderer
+    passes a global (section-offset) grid through it so its trajectories are
+    the same math as the analyser's, not a hand-synced copy.
+    """
     f_traj = _interp_track(times, _smooth_envelope(freqs * freq_scale, 3),
-                           n_samples, sr)
+                           n_samples, sr, grid)
     amp_env = _smooth_envelope(amps)
     if normalize_amp:
         peak = float(np.max(amp_env))
         if peak > 1e-12:
             amp_env = amp_env / peak
-    a_traj = _interp_track(times, amp_env, n_samples, sr)
+    a_traj = _interp_track(times, amp_env, n_samples, sr, grid)
     integral_frames = np.zeros(times.size, dtype=np.float64)
     if times.size > 1:
         # A 3-frame median, not 9: 9 frames span 104.5 ms, which is 1.25x the
@@ -280,11 +293,12 @@ def _trajectories(
         integral_frames[1:] = np.cumsum(
             2.0 * np.pi * 0.5 * (f_smooth[:-1] + f_smooth[1:]) * np.diff(times)
         )
-    integral = _interp_track(times, integral_frames, n_samples, sr)
+    integral = _interp_track(times, integral_frames, n_samples, sr, grid)
     if times.size > 1:
-        t_samples = np.arange(n_samples, dtype=np.float64) / sr
+        if grid is None:
+            grid = np.arange(n_samples, dtype=np.float64) / sr
         integral = integral + _quadratic_phase_correction(
-            t_samples, times, f_smooth
+            grid, times, f_smooth
         )
     return a_traj, integral, f_traj
 
@@ -387,7 +401,18 @@ def refine_track(
     amp_traj: Optional[np.ndarray] = None
     integral: Optional[np.ndarray] = None
     support_mask: Optional[np.ndarray] = None
+    trajectory_refined = False
     if use_trajectory:
+        # The STFT peak of a modulated partial is a smeared estimate of the
+        # instantaneous frequency, and the smear grows with the modulation
+        # depth. Recover the true trajectory by de-chirping, so that the
+        # harmonic multiples of this glide (m*f(t)) are correct too.
+        corrected = None
+        if _HETERODYNE_ENABLED:
+            corrected = _heterodyne_refine_glide(reference, sr, times, freqs)
+        if corrected is not None:
+            freqs = corrected
+            trajectory_refined = True
         a_traj, integral, _ = _trajectories(
             times, freqs, amps, n, sr, freq_scale=1.0, normalize_amp=False
         )
@@ -500,6 +525,10 @@ def refine_track(
         # reproduces the same term needs the same f_guess, not a fresh
         # estimate of the trajectory's median.
         "phase_ref_hz": round(float(f_guess), 6),
+        # True when the de-chirp recovered the glide's true trajectory. A
+        # harmonic multiple of a glide is only as good as the glide's own
+        # trajectory, so the harmonic expansion only trusts refined bases.
+        "trajectory_refined": bool(trajectory_refined),
     }
     if use_trajectory:
         params["trajectory"] = {
@@ -649,7 +678,7 @@ def select_tracks_banded(tracks: List[SinusoidalTrack], max_tracks: int) -> List
         return by_amp
     n_high = max(1, int(round(max_tracks * HIGH_TRACK_FRACTION)))
     high = [t for t in by_amp if t.mean_frequency > HIGH_BAND_HZ]
-    rest = [t for t in by_amp if t.mean_frequency <= HIGH_BAND_HZ]
+    [t for t in by_amp if t.mean_frequency <= HIGH_BAND_HZ]
     reserved = high[:n_high]
     # Fill the remaining slots from every leftover (including high-band tracks
     # beyond the reservation), still ordered by amplitude. Filling only from
@@ -876,9 +905,14 @@ def _in_glide_corridor(
     base_params: Dict[str, Any],
     max_duration_ratio: float = 0.5,
 ) -> bool:
-    """Is ``params`` a short fragment inside ``base_params``'s swept corridor?"""
-    if params.get("model") == "glide":
-        return False
+    """Is ``params`` a short fragment inside ``base_params``'s swept corridor?
+
+    The caustic of a modulated partial is the same partial seen at the
+    stationary points of its phase: it appears at a *fixed* frequency inside
+    the swept corridor and it lives for a fraction of the sweep. It is not
+    an independent partial, and once the modulated partial itself is in the
+    model the caustic is redundant.
+    """
     traj = base_params.get("trajectory")
     if not traj:
         return False
@@ -900,15 +934,22 @@ def _in_glide_corridor(
     return (t1 - t0) <= max_duration_ratio * (b1 - b0)
 
 
+_SHADOWING_ENABLED = os.environ.get("RES_NO_SHADOW", "") == ""
+_HETERODYNE_ENABLED = os.environ.get("RES_NO_HETERODYNE", "") == ""
+_EXPAND_UNGATED = os.environ.get("RES_EXPAND_UNGATED", "") != ""
+
+
 def _expand_harmonic_glides(
     accepted: List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]],
     residual: np.ndarray,
     sr: int,
+    n_samples: int,
     min_energy_drop: float,
     stft_half_window_s: float,
     glide_tolerance_hz: float,
     max_harmonic: int = 10,
     max_fundamental_hz: float = 1200.0,
+    min_family: int = 3,
 ) -> Tuple[
     List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]], int, int
 ]:
@@ -918,21 +959,43 @@ def _expand_harmonic_glides(
     glides and the number of shadowed caustic fragments.
     """
     nyquist = sr / 2.0
+    # Only a genuine *fundamental* may be expanded. A partial that is
+    # itself the m-th harmonic of a lower accepted partial must not spawn a
+    # second, overlapping harmonic family: that is what turned a single bass
+    # note into 171 partials and 82 of them into overlapping families.
+    accepted_freqs = [
+        float(pr.get("frequency", 0.0)) for _, pr, _, _ in accepted
+        if float(pr.get("frequency", 0.0)) > 0.0
+    ]
+
+    def is_harmonic_of_lower(f: float) -> bool:
+        for m in range(2, max_harmonic + 1):
+            target = f / m
+            for other in accepted_freqs:
+                if abs(other - target) <= 0.08 * target:
+                    return True
+        return False
+
     glides = [
         (tr, pr)
         for tr, pr, _, _ in accepted
         if pr.get("model") == "glide" and pr.get("trajectory")
+        and (pr.get("trajectory_refined") or _EXPAND_UNGATED)
+        and not is_harmonic_of_lower(float(pr.get("frequency", 0.0)))
     ]
     if not glides:
         return accepted, 0, 0
 
     next_id = 1 + max((int(t.track_id) for t, _, _, _ in accepted), default=0)
     candidates: List[Tuple[SinusoidalTrack, int, SinusoidalTrack]] = []
-    for base_track, base_params in glides:
+    for base_index, (base_track, base_params) in enumerate(glides):
         base_f = float(base_params.get("frequency", 0.0))
         if base_f <= 0.0 or base_f > max_fundamental_hz:
             continue
-        f_max = float(max(base_params["trajectory"]["f_hz"]))
+        traj = base_params["trajectory"]
+        f_max = float(max(traj["f_hz"]))
+        np.asarray(traj["t"], dtype=np.float64)
+        np.asarray(traj["f_hz"], dtype=np.float64)
         for m in range(2, max_harmonic + 1):
             if m * f_max > 0.95 * nyquist:
                 break
@@ -940,12 +1003,12 @@ def _expand_harmonic_glides(
             if cand is None:
                 continue
             next_id += 1
-            candidates.append((base_track, m, cand))
+            candidates.append((base_track, m, cand, base_index))
     if not candidates:
         return accepted, 0, 0
 
-    scored: List[Tuple[float, int, SinusoidalTrack, Dict[str, Any], np.ndarray]] = []
-    for base_track, m, cand in candidates:
+    scored: List[Tuple[float, int, SinusoidalTrack, Dict[str, Any], np.ndarray, int]] = []
+    for base_index, (base_track, m, cand, cand_base) in enumerate(candidates):
         try:
             sig, params = refine_track(
                 cand, residual, sr, refine_frequency=True,
@@ -957,12 +1020,17 @@ def _expand_harmonic_glides(
         energy_before = float(np.sum(residual ** 2))
         energy_after = float(np.sum((residual - sig) ** 2))
         if energy_after <= energy_before - min_energy_drop:
-            scored.append((energy_before - energy_after, m, cand, params, sig))
+            scored.append(
+                (energy_before - energy_after, m, cand, params, sig, cand_base)
+            )
     scored.sort(key=lambda item: -item[0])
 
     harmonics_accepted = 0
     harmonic_bases: List[Dict[str, Any]] = []
-    for _, m, cand, params, sig in scored:
+    accepted_harmonics: List[
+        Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float, int]
+    ] = []
+    for _, m, cand, params, sig, base_index in scored:
         try:
             sig, params = refine_track(
                 cand, residual, sr, refine_frequency=True,
@@ -977,20 +1045,155 @@ def _expand_harmonic_glides(
         if energy_after > energy_before - min_energy_drop:
             residual = residual + sig
             continue
-        accepted.append((cand, params, sig, energy_after))
+        accepted_harmonics.append((cand, params, sig, energy_after, base_index))
         harmonics_accepted += 1
         harmonic_bases.append(params)
 
+    # Parameter-overfit guard: a harmonic *family* is only used when the
+    # family is real. One isolated harmonic of a partial that is not a
+    # fundamental is a fit to noise, and adding it costs fidelity: measured
+    # on the real fixtures it cost 0.035 correlation on dense material. A
+    # base that produces a genuine series (three or more harmonics that
+    # each explain energy) is a fundamental, and its family is kept.
+    family_size: Dict[int, int] = {}
+    for _, _, _, _, base_index in accepted_harmonics:
+        family_size[base_index] = family_size.get(base_index, 0) + 1
+    keep = [
+        item for item in accepted_harmonics
+        if family_size[item[4]] >= min_family
+    ]
+    dropped = len(accepted_harmonics) - len(keep)
+    if dropped:
+        # Roll the dropped harmonics back into the residual: they were
+        # subtracted while the family was being tested.
+        for cand, params, sig, _, _ in accepted_harmonics:
+            if any(item[0] is cand for item in keep):
+                continue
+            residual = residual + sig
+    for cand, params, sig, energy_after, _ in keep:
+        accepted.append((cand, params, sig, energy_after))
+
     shadowed = 0
     kept: List[Tuple[SinusoidalTrack, Dict[str, Any], np.ndarray, float]] = []
+    # A corridor belongs to a *full-span* glide: a fragment is a caustic of
+    # it. Restricting the corridors to the full-span glides keeps a short
+    # note that merely happens to sit inside a swept range from being
+    # shadowed.
+    span_s = n_samples / float(sr)
+    corridor_bases = [
+        pr for _, pr, _, _ in accepted
+        if pr.get("trajectory")
+        and (float(pr.get("end_time", 0.0)) - float(pr.get("start_time", 0.0)))
+        >= 0.5 * span_s
+    ]
     for tr, pr, sg, en in accepted:
-        if pr.get("model") != "glide" and any(
-            _in_glide_corridor(pr, bp) for bp in harmonic_bases
+        if _SHADOWING_ENABLED and any(
+            _in_glide_corridor(pr, bp) for bp in corridor_bases
         ):
             shadowed += 1
             continue
         kept.append((tr, pr, sg, en))
     return kept, harmonics_accepted, shadowed
+
+
+def _heterodyne_refine_glide(
+    reference: np.ndarray,
+    sr: int,
+    times: np.ndarray,
+    freqs: np.ndarray,
+) -> Optional[np.ndarray]:
+    """Recover a glide's true frequency trajectory by de-chirping the signal.
+
+    The STFT peak of a modulated partial is a *smeared* estimate: the
+    measured excursion is a fraction of the true one (5.88 Hz measured for a
+    20 Hz vibrato), and for the upper harmonics the ridge moves faster than
+    the tracker can associate frames, so it shatters into fixed-frequency
+    caustics.
+
+    The de-chirp recovers the truth. Multiplying the signal by the
+    estimated glide's phase sends that partial to baseband, where the
+    phase of the baseband *is* the phase error of the estimate; its
+    derivative is the frequency error. The neighbouring partials land at
+    +-f_base after the de-chirp, so a low-pass at 0.4*f_base isolates the
+    baseband and rejects them.
+
+    Returns the corrected frequency at ``times`` or None when the estimate
+    cannot be made.
+    """
+    n = len(reference)
+    if n < 256 or times.size < 4:
+        return None
+    try:
+        from scipy.signal import butter, hilbert, sosfiltfilt
+    except Exception:
+        return None
+
+    grid = np.arange(n, dtype=np.float64) / sr
+    f_interp = np.interp(grid, times, freqs)
+    theta = 2.0 * np.pi * np.cumsum(f_interp) / sr
+    try:
+        analytic = hilbert(reference)
+    except Exception:
+        return None
+    base = analytic * np.exp(-1j * theta)
+    nyq = sr / 2.0
+    f_base = float(np.median(freqs))
+    cutoff = float(min(max(0.1 * f_base, 20.0), 0.45 * nyq))
+    try:
+        sos = butter(4, cutoff / nyq, btype="low", output="sos")
+        # Zero phase: a causal filter delays the baseband, and the delay
+        # rotates the measured correction by a phase that grows with the
+        # modulation rate - measured as a correlation of +0.06 against the
+        # truth where the zero-phase filter reaches +0.92.
+        lp = sosfiltfilt(sos, base)
+    except Exception:
+        return None
+    amp = np.abs(lp)
+    phase = np.unwrap(np.angle(lp))
+    # Differentiate on the sample grid: the frame spacing is ~23 ms and the
+    # frequency correction can move by several radians per frame, so a
+    # frame-to-frame difference would alias. The sample grid is fine enough.
+    corr = np.gradient(phase, 1.0 / sr) / (2.0 * np.pi)
+    if not np.all(np.isfinite(corr)):
+        return None
+    # Where the baseband has no energy the phase is meaningless (the signal
+    # fades at the edges of the window); those samples carry noise, not a
+    # measurement.
+    level = float(np.median(amp))
+    if level <= 0.0:
+        return None
+    good = amp >= 0.5 * level
+    if int(np.count_nonzero(good)) < 32:
+        return None
+    corr = np.where(good, corr, np.nan)
+    sample_t = grid[good]
+    sample_c = corr[good]
+    # Fill the masked span from the valid samples so the correction stays
+    # defined over the whole track.
+    corr_filled = np.interp(grid, sample_t, sample_c)
+    correction = np.interp(times, grid, corr_filled)
+    # A correction larger than the estimated excursion is not a refinement,
+    # it is a different estimate: reject it rather than corrupt the track.
+    span = float(np.max(freqs) - np.min(freqs))
+    limit = max(4.0 * span, 40.0)
+    if float(np.max(np.abs(correction))) > limit:
+        return None
+    # A vibrato is a low-frequency oscillation of the frequency, so a genuine
+    # correction is concentrated at the low end of the frame-rate band. A
+    # contaminated baseband - dense material where the de-chirp picks up
+    # neighbouring partials - produces a broadband correction instead, and
+    # applying it rotates the track away from the original. Measured on the
+    # real fixtures: an unvalidated correction cost 0.045 correlation on
+    # dense material.
+    centred = correction - float(np.mean(correction))
+    energy = float(np.sum(centred ** 2))
+    if energy > 0.0:
+        spectrum = np.abs(np.fft.rfft(centred)) ** 2
+        freqs_axis = np.fft.rfftfreq(len(centred), d=float(np.median(np.diff(times))))
+        low = float(np.sum(spectrum[freqs_axis <= 15.0]))
+        if low / energy < 0.5:
+            return None
+    return freqs + correction
 
 
 def sinusoidal_reconstruction(
@@ -1103,7 +1306,7 @@ def sinusoidal_reconstruction(
     # the smeared energy in one piece. The caustics it explains are then
     # shadowed.
     accepted, harmonics_accepted, shadowed = _expand_harmonic_glides(
-        accepted, residual, sr, min_energy_drop,
+        accepted, residual, sr, n_samples, min_energy_drop,
         stft_half_window_s=(n_fft / 2.0) / sr,
         glide_tolerance_hz=glide_tolerance_hz,
     )

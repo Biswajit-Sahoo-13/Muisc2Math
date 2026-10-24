@@ -19,12 +19,11 @@ In-session agent usage (the same contract REA-style agents use):
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import scipy.signal

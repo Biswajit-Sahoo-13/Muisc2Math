@@ -41,7 +41,6 @@ from src.residual import (
 )
 from src.note_extraction import (
     extract_melody_pyin,
-    group_partials_into_notes,
 )
 from src.visualize import (
     plot_waveform,
@@ -50,7 +49,7 @@ from src.visualize import (
     plot_comparison_dashboard,
 )
 from src.math_track_engine import (
-    Project, render, render_to_wav,
+    Project, render_to_wav,
     demo_sinc_drop, demo_math_remix, demo_ambient,
 )
 from src.math_track_visualize import plot_tracks, plot_track_spectrograms
@@ -282,7 +281,7 @@ def cmd_equation_discovery(args: argparse.Namespace) -> None:
     dur = args.duration if args.duration else float(len(y) / sr)
     n = int(sr * dur)
     y = y[:n]
-    t = np.arange(len(y)) / sr
+    np.arange(len(y)) / sr
     peak = float(np.max(np.abs(y))) if len(y) else 0.0
     if peak <= 0.0:
         print("[!] Input is silent; nothing to discover.")
@@ -409,6 +408,8 @@ def cmd_res(args: argparse.Namespace) -> None:
             spectral_lane=args.spectral_lane,
             enable_noise=args.noise,
             k_notes=args.k_notes, k_hits=args.k_hits,
+            energy_parity=bool(getattr(args, "energy_parity", False)),
+            parity_mode=getattr(args, "parity_mode", "ls"),
         )
         print("\n=== Multi-Track Stem Ledger (res/2.0-multitrack) ===")
         for s_name in ("bass", "drums", "vocals", "other"):
@@ -427,6 +428,34 @@ def cmd_res(args: argparse.Namespace) -> None:
 
     from src.res_evidence import build_evidence
     from src.res_loop import recommend_iterations, run_loop
+
+    def _run(led: dict, iterations: int, *, target_corr: float,
+             min_gain: float, stop_on_no_improvement: bool = False) -> dict:
+        """One pass of the loop with this command's LLM/bank settings."""
+        return run_loop(
+            led,
+            args.input,
+            args.output_dir,
+            iterations=iterations,
+            target_corr=target_corr,
+            provider=args.provider,
+            llm_model=args.llm_model or None,
+            llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
+            llm_backend=_llm_backend_for(args),
+            llm_timeout_s=args.llm_timeout,
+            llm_api_base_url=args.llm_base_url,
+            llm_api_key=args.llm_api_key or None,
+            llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
+            min_gain=min_gain,
+            stop_on_no_improvement=stop_on_no_improvement,
+            bank=not args.no_bank,
+            spectral_lane=args.spectral_lane,
+            enable_noise=args.noise,
+            k_notes=args.k_notes, k_hits=args.k_hits,
+            energy_parity=bool(getattr(args, "energy_parity", False)),
+            parity_mode=getattr(args, "parity_mode", "ls"),
+            joint_refine=bool(getattr(args, "joint_refine", False)),
+        )
 
     iterations = args.iterations
     auto_note = ""
@@ -451,26 +480,7 @@ def cmd_res(args: argparse.Namespace) -> None:
               f"{sum(s['partial_count'] for s in ledger['sections'])} partials, "
               f"initial corr {start_corr}")
         print(f"[*] Probe pass ({probe} iterations) to measure the gain trend ...")
-        ledger = run_loop(
-            ledger,
-            args.input,
-            args.output_dir,
-            iterations=probe,
-            target_corr=0.0,
-            provider=args.provider,
-            llm_model=args.llm_model or None,
-            llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
-            llm_backend=_llm_backend_for(args),
-            llm_timeout_s=args.llm_timeout,
-            llm_api_base_url=args.llm_base_url,
-            llm_api_key=args.llm_api_key or None,
-            llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
-            min_gain=0.0,
-            bank=not args.no_bank,
-            spectral_lane=args.spectral_lane,
-            enable_noise=args.noise,
-            k_notes=args.k_notes, k_hits=args.k_hits,
-        )
+        ledger = _run(ledger, probe, target_corr=0.0, min_gain=0.0)
         rec = recommend_iterations(ledger, min_gain=args.min_gain or 1e-3)
         _print_recommendation(rec)
         if rec["converged"]:
@@ -479,28 +489,11 @@ def cmd_res(args: argparse.Namespace) -> None:
             iterations = max(rec["recommended"], probe)
             extra = iterations - probe
             print(f"[*] Extending to {iterations} iterations (+{extra})")
-            ledger = run_loop(
-                ledger,
-                args.input,
-                args.output_dir,
-                iterations=extra,
-                target_corr=args.target_corr,
-                provider=args.provider,
-                llm_model=args.llm_model or None,
-                llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
-                llm_backend=_llm_backend_for(args),
-                llm_timeout_s=args.llm_timeout,
-                llm_api_base_url=args.llm_base_url,
-                llm_api_key=args.llm_api_key or None,
-                llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
-                min_gain=args.min_gain,
+            ledger = _run(
+                ledger, extra,
+                target_corr=args.target_corr, min_gain=args.min_gain,
                 stop_on_no_improvement=args.stop_on_no_improvement,
-                bank=not args.no_bank,
-                spectral_lane=args.spectral_lane,
-
-            enable_noise=args.noise,
-            k_notes=args.k_notes, k_hits=args.k_hits,
-        )
+            )
         auto_note = " (auto)"
     else:
         print(f"[*] RES on '{args.input}' (provider: {args.provider})")
@@ -517,26 +510,10 @@ def cmd_res(args: argparse.Namespace) -> None:
         print(f"[+] Evidence built : {len(ledger['sections'])} sections, "
               f"{sum(s['partial_count'] for s in ledger['sections'])} partials, "
               f"initial corr {start_corr}")
-        ledger = run_loop(
-            ledger,
-            args.input,
-            args.output_dir,
-            iterations=iterations,
-            target_corr=args.target_corr,
-            provider=args.provider,
-            llm_model=args.llm_model or None,
-            llm_cmd=args.llm_cmd.split() if args.llm_cmd else None,
-            llm_backend=_llm_backend_for(args),
-            llm_timeout_s=args.llm_timeout,
-            llm_api_base_url=args.llm_base_url,
-            llm_api_key=args.llm_api_key or None,
-            llm_extra_args=args.llm_extra_args.split() if args.llm_extra_args else None,
-            min_gain=args.min_gain,
+        ledger = _run(
+            ledger, iterations,
+            target_corr=args.target_corr, min_gain=args.min_gain,
             stop_on_no_improvement=args.stop_on_no_improvement,
-            bank=not args.no_bank,
-            spectral_lane=args.spectral_lane,
-            enable_noise=args.noise,
-            k_notes=args.k_notes, k_hits=args.k_hits,
         )
     fill_note = ""
     if getattr(args, "spectral_fill", 0.0) > 0.0:
@@ -849,13 +826,13 @@ def cmd_run_all(args: argparse.Namespace) -> None:
     # 1. Phase 1: Forward Synthesis of benchmark chord
     print("\n>>> STEP 1: Forward Synthesis of Benchmark Chord")
     chord_wav = data_in / "math_chord.wav"
-    gt_chord = generate_benchmark_chord(chord_wav, duration=2.0, sr=44100)
+    generate_benchmark_chord(chord_wav, duration=2.0, sr=44100)
     print(f"    Generated ground-truth audio: {chord_wav}")
 
     # 2. Phase 2: Reverse Engineering of equations
     print("\n>>> STEP 2: Reverse Engineering (Audio -> Equations)")
     eq_json = data_out / "equations.json"
-    disc_model = discover_equations_from_audio(
+    discover_equations_from_audio(
         chord_wav,
         n_fft=4096,
         hop_length=1024,
@@ -1142,6 +1119,25 @@ def main() -> None:
         "--k-hits", type=int, default=12,
         help="Percussive hits the hypothesis bank may nominate per section "
              "(class C). The default 2 covers roughly one beat.",
+    )
+    p_res.add_argument(
+        "--energy-parity", action="store_true",
+        help="Refit the shipped render's loudness: one gain per section "
+             "restores the source level (the referee's correlation is "
+             "scale-invariant, so without this the render can ship far "
+             "too quiet).",
+    )
+    p_res.add_argument(
+        "--parity-mode", choices=["ls", "rms"], default="ls",
+        help="With --energy-parity: 'ls' = least-squares gain (SNR-optimal, "
+             "lands the render at corr x source RMS); 'rms' = loudness "
+             "parity (sounds like the original, small SNR cost at low corr).",
+    )
+    p_res.add_argument(
+        "--joint-refine", action="store_true",
+        help="Jointly refit collision clusters (partials within ~10 Hz) "
+             "with TRF least squares - decouples detuned 808 layers and "
+             "unison beating that per-partial refits cannot.",
     )
     p_res.add_argument(
         "--k-notes", type=int, default=2,

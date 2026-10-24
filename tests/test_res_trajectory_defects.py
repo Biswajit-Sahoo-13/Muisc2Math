@@ -51,7 +51,6 @@ from src.res_synthesis import (
 from src.sinusoidal_model import (
     SinusoidalTrack,
     _prepare_frames,
-    _smooth_envelope,
     _trajectories,
     refine_track,
     sinusoidal_reconstruction,

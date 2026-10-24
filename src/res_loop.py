@@ -36,14 +36,13 @@ import copy
 import json
 import math
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import soundfile as sf
-from scipy.optimize import minimize_scalar, least_squares
+from scipy.optimize import least_squares
 
 from src.sinusoidal_model import _main_lobe_refine
 
@@ -53,19 +52,15 @@ from src.res_synthesis import (
   _support_mask,
   _render_partial,
   _score,
+  apply_energy_parity,
   fit_noise_floor_partial,
   )
 from src.res_bank import tournament_section
-from src.residual import compute_error_metrics, segmental_snr_db, onset_corr
+from src.residual import segmental_snr_db
 from src.error_correction import (
-    least_squares_gain,
-    energy_guard,
-    find_best_lag,
     apply_lag,
 )
 from src.llm_backends import (
-    BACKENDS,
-    RunResult,
     auto_backend,
     build_command,
     find_backend,
@@ -1314,12 +1309,13 @@ def _referee_ok(
 def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[str], Optional[np.ndarray]]:
     """Self-contained, picklable section processing worker."""
     (sec, y_sec, sr, w_start, st_hw, bank, spectral_lane, *rest) = args
-    # ``enable_noise``, ``k_notes`` and ``k_hits`` were added after the
-    # worker tuple was already public; accept the older tuples rather than
-    # breaking every existing caller.
+    # ``enable_noise``, ``k_notes``, ``k_hits`` and ``joint_refine`` were
+    # added after the worker tuple was already public; accept the older
+    # tuples rather than breaking every existing caller.
     enable_noise = bool(rest[0]) if len(rest) > 0 else False
     k_notes = int(rest[1]) if len(rest) > 1 else 2
     k_hits = int(rest[2]) if len(rest) > 2 else 12
+    joint_refine = bool(rest[3]) if len(rest) > 3 else False
     if len(y_sec) < 8:
         return sec, [], None
 
@@ -1331,6 +1327,16 @@ def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[s
         y_sec, sec["partials"], sr,
         start_sample=w_start, stft_half_window_s=st_hw,
     )
+    if joint_refine:
+        # The lifter refines each partial alone; partials within ~10 Hz of
+        # each other (detuned 808 layers, unisons) beat, and no per-partial
+        # refit can decouple them. The clustered TRF refiner fits each
+        # collision cluster jointly - wired in from Phase 4 where it sat
+        # orphaned behind a flag (opt-in: published defaults untouched).
+        refine_section_parameters(
+            y_sec, sec["partials"], sr,
+            start_sample=w_start, stft_half_window_s=st_hw,
+        )
     bank_records: List[Dict[str, Any]] = []
     new_classes: List[str] = []
     if bank:
@@ -1340,6 +1346,13 @@ def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[s
             k=k_notes, k_hits=k_hits,
             enable_noise=enable_noise,
             enable_spectral_lane=spectral_lane,
+            # A degradation budget, not a fixed bar: the shipped absolute
+            # 0.60 floor kept the lane inert on exactly the stems that need
+            # stochastic models (drums sits at 0.42 - measured, 0 accepted
+            # stochastic candidates in 277 ledgers). Relative mode lets the
+            # lane run anywhere while still capping the correlation it may
+            # give back. Only affects runs that opt into the lane.
+            corr_floor_mode="relative" if spectral_lane else "absolute",
         )
         for r in bank_records:
             if r.get("accepted") and r.get("class"):
@@ -1371,24 +1384,22 @@ def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[s
         seed=1234 + int(w_start),
     )
     if noise is not None:
-        base = _score(y_sec, recon_sec, sr)
-        best = None
-        for mult in (0.15, 0.3, 0.5, 0.8):
-            cand = dict(noise)
-            cand["amplitude"] = round(float(noise["amplitude"]) * mult, 6)
-            trial = recon_sec + _render_partial(
-                cand, len(y_sec), sr, start_sample=w_start,
-                stft_half_window_s=st_hw,
-            )
-            m = _score(y_sec, trial, sr)
-            if (m["log_spectral_distance_db"] < base["log_spectral_distance_db"]
-                    and m["correlation"] >= base["correlation"] - 0.005):
-                if best is None or (m["log_spectral_distance_db"]
-                                    < best[1]["log_spectral_distance_db"]):
-                    best = (cand, m, trial)
+        best = _apply_noise_floor(
+            y_sec, recon_sec, noise, sr, w_start, st_hw, spectral_lane
+        )
         if best is not None:
             sec["partials"].append(best[0])
             recon_sec = best[2]
+    # The chase: opt-in noise-layer matching pursuit on the remaining
+    # residual (spectral lane only - published defaults untouched).
+    chase_added, recon_sec = _chase_noise_layers(
+        y_sec, recon_sec, sr, w_start, st_hw, spectral_lane,
+        rounds=3,
+        start_time=float(sec.get("start", 0.0)),
+        end_time=float(sec.get("end", 0.0)),
+    )
+    if chase_added:
+        sec["partials"].extend(chase_added)
 
     sec["metrics"] = _score(y_sec, recon_sec, sr)
     new_c = float(sec["metrics"]["correlation"])
@@ -1400,6 +1411,153 @@ def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[s
         sec["frozen_reason"] = "gain < 0.002 for 2 consecutive passes"
 
     return sec, new_classes, recon_sec
+
+
+def _apply_noise_floor(
+    y_sec: np.ndarray,
+    recon_sec: np.ndarray,
+    noise: Dict[str, Any],
+    sr: int,
+    w_start: int,
+    st_hw: float,
+    lane: bool,
+    ladder=(0.15, 0.3, 0.5, 0.8),
+):
+    """Try the noise floor at several levels; keep the best spectrally
+    improving one. Returns ``(candidate, score, render)`` or ``None``.
+
+    Corr-drop allowance: 0.005 shipped (a floor must be nearly free in
+    waveform terms). With the spectral lane on, 0.02 - stochastic content
+    is judged spectrally, the same philosophy as the bank's spectral lane.
+    Opt-in: without the lane the shipped gate is byte-identical.
+
+    The onset gate is unconditional: onset corr is a GLOBAL referee metric,
+    and a floor whose band envelopes inject spectral-flux events can wreck
+    it while looking free locally - measured, such a floor vetoed an
+    iteration that had gained +0.52 correlation. A candidate may not give
+    back more than 0.02 of the section's onset structure.
+    """
+    base = _score(y_sec, recon_sec, sr)
+    allow = 0.02 if lane else 0.005
+    best = None
+    for mult in ladder:
+        cand = dict(noise)
+        cand["amplitude"] = round(float(noise["amplitude"]) * mult, 6)
+        trial = recon_sec + _render_partial(
+            cand, len(y_sec), sr, start_sample=w_start,
+            stft_half_window_s=st_hw,
+        )
+        m = _score(y_sec, trial, sr)
+        if (m["log_spectral_distance_db"] < base["log_spectral_distance_db"]
+                and m["correlation"] >= base["correlation"] - allow
+                and m["onset_corr"] >= base["onset_corr"] - 0.02):
+            if best is None or (m["log_spectral_distance_db"]
+                                < best[1]["log_spectral_distance_db"]):
+                best = (cand, m, trial)
+    return best
+
+
+def _chase_noise_layers(
+    y_sec: np.ndarray,
+    recon_sec: np.ndarray,
+    sr: int,
+    w_start: int,
+    st_hw: float,
+    lane: bool,
+    rounds: int = 2,
+    start_time: float = 0.0,
+    end_time: float = 1.0,
+):
+    """Noise-layer matching pursuit: stack band-envelope noise layers, each
+    fitted from the REMAINING residual.
+
+    Why this can go where the tonal atoms cannot: LSD/MR-STFT are
+    phase-blind, so the magnitude spectrum is fully explainable by
+    partials + noise layers even where waveform correlation is capped by
+    noise orthogonality. Each round fits a fresh floor to what is left,
+    and the referee's own gates (corr budget, onset structure, LSD must
+    improve) decide whether the layer ships. Opt-in via the spectral lane;
+    without it this returns unchanged.
+
+    Returns ``(layers_added, recon)``.
+    """
+    if not lane:
+        return [], recon_sec
+    added: List[Dict[str, Any]] = []
+    for r in range(max(0, rounds)):
+        resid = y_sec - recon_sec
+        if float(np.sqrt(np.mean(resid ** 2))) < 1e-4:
+            break
+        layer = fit_noise_floor_partial(
+            resid, sr, start_time=start_time, end_time=end_time,
+            seed=1234 + int(w_start) + 1000 * (r + 1),
+        )
+        if layer is None:
+            break
+        best = _apply_noise_floor(
+            y_sec, recon_sec, layer, sr, w_start, st_hw, lane,
+            # Chase layers keep their full measured level - the ladder's
+            # 0.8 cap is for the always-on floor; a chase layer already
+            # carries the residual's own scale.
+            ladder=(0.3, 0.6, 1.0),
+        )
+        if best is None:
+            break
+        added.append(best[0])
+        recon_sec = best[2]
+    return added, recon_sec
+
+
+def _repair_seams(
+    signal: np.ndarray,
+    boundaries: Sequence[int],
+    half_ms: float = 3.0,
+    sr: int = 22050,
+    ratio_trigger: float = 3.0,
+) -> int:
+    """De-click section boundaries by interpolating across the seam.
+
+    The OLA fade blends toward a scalar, which shrank but did not remove
+    the step (measured 8.3x the typical sample delta after OLA). A
+    smoothstep (C1-continuous) interpolation across the seam - only where
+    the jump actually exceeds the trigger - removes the discontinuity
+    without creating new edge-kinks the way a linear ramp does (measured:
+    the linear ramp traded the seam click for two smaller edge clicks).
+    """
+    w = max(8, int(half_ms / 1000.0 * sr))
+    repaired = 0
+    for b in boundaries:
+        if b - w < 1 or b + w >= len(signal) - 1:
+            continue
+        d = np.abs(np.diff(signal))
+        local = float(d[max(0, b - w):b + w].max())
+        typ = float(np.median(d))
+        if typ <= 0 or local < ratio_trigger * typ:
+            continue
+        left = signal[b - w]
+        right = signal[b + w]
+        u = np.linspace(0.0, 1.0, 2 * w + 1)
+        ramp = left + (right - left) * (u * u * (3.0 - 2.0 * u))
+        signal[b - w:b + w + 1] = ramp
+        repaired += 1
+    return repaired
+
+
+def _parity_spans(
+    sections: List[Dict[str, Any]], n: int, sr: int
+) -> List[Tuple[int, int]]:
+    """Contiguous (start, end) sample spans for the per-section parity fit."""
+    spans: List[Tuple[int, int]] = []
+    prev_end = 0
+    for sec in sorted(sections, key=lambda s: float(s.get("start", 0.0))):
+        start = int(sec.get("start_sample", round(float(sec.get("start", 0.0)) * sr)))
+        end = int(sec.get("end_sample", round(float(sec.get("end", 0.0)) * sr)))
+        start = max(start, prev_end)
+        end = min(end, n)
+        if start < end:
+            spans.append((start, end))
+            prev_end = end
+    return spans
 
 
 def run_loop(
@@ -1426,6 +1584,9 @@ def run_loop(
     enable_noise: bool = False,
     k_notes: int = 2,
     k_hits: int = 12,
+    energy_parity: bool = False,
+    parity_mode: str = "ls",
+    joint_refine: bool = False,
 ) -> Dict[str, Any]:
     """Iterate the RES loop and persist checkpoints + outputs to ``out_dir``.
 
@@ -1542,7 +1703,7 @@ def run_loop(
             w_end = min(n, int(sec.get("end_sample", round(sec["end"] * sr))))
             y_sec = y[w_start:w_end]
             tasks.append((sec, y_sec, sr, w_start, st_hw, bank, spectral_lane,
-                          enable_noise, k_notes, k_hits))
+                          enable_noise, k_notes, k_hits, joint_refine))
 
         n_workers = (
             workers if workers is not None
@@ -1647,13 +1808,59 @@ def run_loop(
 
     ledger["stop_reason"] = stop_reason
 
+    # The note layer: the frequency-native view of what was fitted -
+    # beat pairs (detuned unisons with their beat rates) and sub-bass
+    # note events (the 808 as discrete notes with their attack drop).
+    # Analysis only: the render and the referee are untouched.
+    try:
+        from src.note_layer import detect_beat_pairs, detect_note_events
+        all_partials = [
+            p for s in (ledger.get("sections") or [])
+            for p in s.get("partials", [])
+        ]
+        ledger["note_layer"] = {
+            "beat_pairs": detect_beat_pairs(all_partials)[:24],
+            "sub_note_events": detect_note_events(y, sr)[:16],
+        }
+    except Exception:
+        pass
+
+    # The shipped render gets OLA crossfades: sections rephase
+    # independently and the raw paste clicks (measured: a 13.8x sample
+    # jump at a real section boundary - audible as a pop mid-song). The
+    # score below is recomputed on this exact render, so the ledger's
+    # numbers always describe the audio that ships.
     best_recon = render_ledger(
-        {**ledger, "sections": best_sections}, n, ola=False
+        {**ledger, "sections": best_sections}, n, ola=True
     )
+    _repair_seams(
+        best_recon,
+        [int(round(float(s["start"]) * sr)) for s in best_sections[1:]],
+        sr=sr,
+    )
+    ledger["energy_parity"] = {"applied": False, "gains": []}
+    if energy_parity:
+        # The referee optimises correlation, which is scale-invariant, so
+        # the shipped render can sit at the wrong loudness (measured: the
+        # drums stem's best render carried 2.1% of the source energy). One
+        # gain per section restores parity. "ls" is the SNR-optimal
+        # least-squares gain (it lands the render at corr x source RMS);
+        # "rms" is loudness parity - the "sounds like the original" choice.
+        # Off by default so published numbers do not move until re-measured.
+        spans = _parity_spans(best_sections, n, sr)
+        best_recon, parity_gains = apply_energy_parity(
+            y, best_recon, spans, mode=parity_mode
+        )
+        ledger["energy_parity"] = {
+            "applied": True,
+            "mode": ("per-section rms" if parity_mode == "rms"
+                     else "per-section least squares"),
+            "gains": [round(float(g), 6) for g in parity_gains],
+        }
     wave = out / "res_best.wav"
     sf.write(str(wave), np.clip(best_recon, -1.0, 1.0), sr)
     recon_final = out / "res_final.wav"
-    final_full = render_ledger(ledger, n, ola=False)
+    final_full = render_ledger(ledger, n, ola=True)
     sf.write(str(recon_final), np.clip(final_full, -1.0, 1.0), sr)
     ledger["best"] = _score(y, best_recon, sr)
     with open(out / "res_equations.txt", "w", encoding="utf-8") as f:
@@ -1692,6 +1899,8 @@ def run_stems_res_loop(
     enable_noise: bool = False,
     k_notes: int = 2,
     k_hits: int = 12,
+    energy_parity: bool = False,
+    parity_mode: str = "ls",
 ) -> Dict[str, Any]:
     """Execute Tri-Mode Stem Separation and Multi-Track RES Tournament Loop.
 
@@ -1702,7 +1911,6 @@ def run_stems_res_loop(
       - res_equations.txt & res_bytebeat.js
     """
     from src.res_evidence import separate_stems, build_evidence
-    from src.beat_detection import detect_beats
 
     if isinstance(source_path, np.ndarray):
         y = np.asarray(source_path, dtype=np.float32)
@@ -1835,7 +2043,7 @@ def run_stems_res_loop(
                 enable_noise=enable_noise,
                 k_notes=k_notes, k_hits=k_hits,
             )
-            recon_s = render_ledger(s_ledger, n, ola=False)
+            recon_s = render_ledger(s_ledger, n, ola=True)
 
             # Prune low-energy junk partials
             stem_energy = float(np.sum(y_s ** 2))
@@ -1858,7 +2066,7 @@ def run_stems_res_loop(
                 pruned_sections.append(sec)
 
             cand_ledger = {**s_ledger, "sections": pruned_sections}
-            cand_recon = render_ledger(cand_ledger, n, ola=False)
+            cand_recon = render_ledger(cand_ledger, n, ola=True)
             if _corr(y_s, cand_recon) >= _corr(y_s, recon_s) - 0.005:
                 s_ledger["sections"] = pruned_sections
                 recon_s = cand_recon
@@ -1887,6 +2095,29 @@ def run_stems_res_loop(
     for r in recon_stems.values():
         recon_mix += r
     mix_metrics = _score(y, recon_mix, sr)
+
+    # Loudness parity for the master mix. The stems pipeline had none, so
+    # its combined mix shipped at the wrong level (measured: loudness
+    # pillar 68.6 while tone led the whole suite at 78.0). One whole-span
+    # gain - per-stem sections overlap in the mix, so per-section gains
+    # here would double-apply.
+    parity_info = {"applied": False, "mode": parity_mode, "gains": []}
+    if energy_parity:
+        if parity_mode == "rms":
+            rms_y = float(np.sqrt(np.mean(y ** 2)))
+            rms_r = float(np.sqrt(np.mean(recon_mix ** 2)))
+            mix_gain = rms_y / rms_r if rms_r > 1e-12 else 1.0
+        else:
+            mix_gain = float(
+                np.dot(y, recon_mix)
+                / max(float(np.dot(recon_mix, recon_mix)), 1e-15)
+            )
+        if np.isfinite(mix_gain):
+            mix_gain = min(max(mix_gain, 0.0), 50.0)
+            recon_mix = recon_mix * mix_gain
+            parity_info = {"applied": True, "mode": f"master-mix {parity_mode}",
+                           "gains": [round(mix_gain, 6)]}
+            mix_metrics = _score(y, recon_mix, sr)
 
     sf.write(str(out / "res_full_mix.wav"), np.clip(recon_mix, -1.0, 1.0), sr)
     sf.write(str(out / "res_best.wav"), np.clip(recon_mix, -1.0, 1.0), sr)
@@ -1940,6 +2171,7 @@ def run_stems_res_loop(
         "stems": stems_dict,
         "sections": merged_sections,
         "best": mix_metrics,
+        "energy_parity": parity_info,
         "initial_correlation": mix_metrics["correlation"],
         "equation_classes": sorted(list(all_classes)) or ["damped_cosine", "glide", "filtered_noise"],
         "outputs": {
