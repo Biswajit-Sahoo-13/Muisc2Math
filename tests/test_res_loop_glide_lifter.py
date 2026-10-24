@@ -1,10 +1,9 @@
 """Tests for glide partial refinement in _section_update and seg_snr gating."""
 
 import numpy as np
-import pytest
 
-from src.res_loop import _section_update, run_loop
-from src.res_synthesis import _render_partial, _score, _corr
+from src.res_loop import _section_update
+from src.res_synthesis import _render_partial, _corr
 
 SR = 22050
 
@@ -71,6 +70,6 @@ def test_seg_snr_guard_penalizes_local_energy_bloat():
         "envelope_t0": 0.0,
     }]
     # Run section update on well-fitting partial
-    acc = _section_update(y_sec, partials, SR)
+    _section_update(y_sec, partials, SR)
     # The partial should stay close to true signal and not blow up amplitude
     assert partials[0]["amplitude"] <= 0.5

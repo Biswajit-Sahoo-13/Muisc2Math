@@ -5,7 +5,6 @@ neighbours (deflation) rather than against the raw audio, then the group is
 re-solved and the result kept only if the group residual drops.
 """
 import numpy as np
-import pytest
 
 from src.tracking import _deflated_freq_refine
 
@@ -83,7 +82,6 @@ def test_discovery_frequency_error_does_not_increase():
     """End-to-end: the discovered frequencies must be at least as good."""
     import tempfile
     from pathlib import Path
-    import soundfile as sf
     from src.synthesis import generate_benchmark_chord
     from src.tracking import discover_equations_from_audio
 

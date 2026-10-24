@@ -8,7 +8,6 @@ Verifies:
 """
 
 import numpy as np
-import pytest
 
 from src.res_loop import apply_ola_crossfade, refine_section_parameters
 from src.res_bank import (
@@ -100,7 +99,7 @@ def test_clustered_refinement_dampened_frequency_shift():
     f1_init = p1["frequency"]
     f2_init = p2["frequency"]
 
-    refined_count = refine_section_parameters(y_sec, partials, sr, max_nfev=30)
+    refine_section_parameters(y_sec, partials, sr, max_nfev=30)
 
     # Frequency shifts must be <= 2.0 Hz
     assert abs(p1["frequency"] - f1_init) <= 2.0 + 1e-4, f"Shift {abs(p1['frequency'] - f1_init)} exceeds 2.0 Hz"
@@ -109,7 +108,7 @@ def test_clustered_refinement_dampened_frequency_shift():
 
 def test_acceptance_gate_evaluates_lsd():
     """Verify _accept_candidate accepts candidates that improve Log-Spectral Distance and residual error."""
-    from src.res_bank import _accept_candidate, section_lsd
+    from src.res_bank import _accept_candidate
 
     sr = 22050
     n = 2048

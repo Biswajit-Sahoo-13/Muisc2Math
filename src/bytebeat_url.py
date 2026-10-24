@@ -19,7 +19,7 @@ from __future__ import annotations
 import base64
 import struct
 import zlib
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 BYTEBEAT_MODES = ("Bytebeat", "Signed Bytebeat", "Floatbeat", "Funcbeat")
 

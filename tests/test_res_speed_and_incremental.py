@@ -1,7 +1,6 @@
 """Tests for Phase 2: Speed optimizations (incremental residual and evidence cache)."""
 
 import numpy as np
-import pytest
 
 from src.res_evidence import build_evidence, get_cached_section_evidence, clear_evidence_cache
 from src.res_loop import _section_update

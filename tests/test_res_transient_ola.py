@@ -1,7 +1,6 @@
 """Tests for Transient-Aware Overlap-Add (OLA) in res_loop (Phase 4)."""
 
 import numpy as np
-import pytest
 
 from src.res_loop import apply_ola_crossfade
 

@@ -4,7 +4,6 @@ import unittest
 import numpy as np
 from src.song_recreation import (
     build_recreated_project_for_metre_lost,
-    analyze_song_structure,
 )
 from src.math_track_engine import render
 

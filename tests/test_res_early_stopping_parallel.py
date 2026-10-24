@@ -1,9 +1,8 @@
 """Tests for Phase 2: Per-section early stopping and parallel processing."""
 
 import numpy as np
-import pytest
 
-from src.res_loop import run_loop, _process_section_task
+from src.res_loop import run_loop
 
 
 def test_early_stopping_freezes_converged_section(tmp_path):

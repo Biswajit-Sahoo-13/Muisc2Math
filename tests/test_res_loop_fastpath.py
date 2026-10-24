@@ -1,6 +1,5 @@
 """Guards for the loop fast paths: pool reuse, worker default, recon assembly."""
 import numpy as np
-import pytest
 
 import src.res_loop as rl
 

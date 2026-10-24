@@ -7,18 +7,15 @@ Verifies:
 4. Tri-mode stem resolution (Directory, Demucs detection, Native DSP fallback).
 """
 
-import os
-import shutil
 import tempfile
 from pathlib import Path
 import numpy as np
-import pytest
 import soundfile as sf
 
 from src.res_evidence import separate_stems
 from src.sinusoidal_model import sinusoidal_reconstruction
-from src.res_synthesis import _corr, _render_partial
-from src.res_loop import render_ledger, run_stems_res_loop
+from src.res_synthesis import _corr
+from src.res_loop import render_ledger
 from src.math_track_engine import multitrack_ledger_to_math_tracks
 
 
@@ -76,7 +73,7 @@ def test_multitrack_ledger_hybrid_schema_compatibility():
     sr = 22050
     dur = 1.0
     n = int(dur * sr)
-    t = np.arange(n) / sr
+    np.arange(n) / sr
 
     # Mock multitrack ledger with bass and vocal stems
     p_bass = {

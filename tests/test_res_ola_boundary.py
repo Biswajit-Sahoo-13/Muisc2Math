@@ -1,7 +1,6 @@
 """Tests for Slice 2: Overlap-Add (OLA) Boundary Smoothing in res_loop."""
 
 import numpy as np
-import pytest
 
 from src.res_loop import apply_ola_crossfade, render_ledger
 

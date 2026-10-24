@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
 
 from src.error_correction import (
     apply_lag,

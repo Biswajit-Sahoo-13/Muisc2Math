@@ -55,5 +55,16 @@ packages = ["src"]
 # top-level module. Without this the `m2m` console script has nothing to call.
 py-modules = ["main"]
 
+# The lint gate is bug-class checks only, not a style gate: E9 syntax errors,
+# F401 unused imports, F811 redefinition, F821 undefined names (catches typing
+# names that only survive because of `from __future__ import annotations`),
+# F841 unused locals (the stale-variable bug class behind the tournament
+# mis-gate), W605 invalid escapes.
+[tool.ruff]
+extend-exclude = ["bytebeat-composer", "site", "out", "data"]
+
+[tool.ruff.lint]
+select = ["E9", "F401", "F811", "F821", "F841", "W605"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

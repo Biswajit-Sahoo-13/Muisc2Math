@@ -13,7 +13,6 @@ For each variant: the replica (corr between the analyser's own
 sinusoid_audio and the RES render of the same partials) and the fidelity
 (corr between the reference and the RES render).
 """
-import json
 import sys
 from pathlib import Path
 

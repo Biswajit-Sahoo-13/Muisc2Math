@@ -10,7 +10,6 @@ The fix re-estimates the phase on a short leading window, holding frequency
 and decay fixed, and keeps the result only if it does not degrade the body.
 """
 import numpy as np
-import pytest
 
 from src.synthesis import generate_benchmark_chord, render_component
 from src.tracking import discover_equations_from_audio

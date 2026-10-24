@@ -8,16 +8,14 @@ instrument layer, and renders a complete multi-track mathematical reproduction.
 from __future__ import annotations
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Union
 import numpy as np
 import librosa
 import soundfile as sf
 import matplotlib.pyplot as plt
 
-from src.math_track_engine import Project, Track, MathTrackEngine, midi2freq
+from src.math_track_engine import Project, Track, MathTrackEngine
 from src.beat_detection import detect_beats
-from src.formula_bank import FORMULA_BANK, fit_best_formula_for_segment
-from src.spectrogram_math import compute_cqt_spectrogram, extract_notes_cqt_polyphonic
 
 
 def analyze_song_structure(
@@ -81,7 +79,6 @@ def build_recreated_project_for_metre_lost(
     5. Shaker / Hi-Hats:
        Short high-frequency clipped periodic noise pulse on offbeats.
     """
-    beat_sec = 60.0 / bpm
 
     # 16-step patterns for 1 bar (or 4 beats)
     # Kick on beats 0, 2 (or four-on-the-floor on steps 0, 4, 8, 12 in 16th notes)

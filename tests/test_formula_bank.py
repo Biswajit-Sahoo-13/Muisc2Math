@@ -6,7 +6,6 @@ from src.formula_bank import (
     FORMULA_BANK,
     register_formula,
     fit_best_formula_for_segment,
-    load_custom_formulas,
 )
 
 

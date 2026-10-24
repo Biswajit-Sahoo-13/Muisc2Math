@@ -14,7 +14,6 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from matplotlib.patches import Rectangle
 
 TIMELINE_COLORS = [
@@ -79,9 +78,6 @@ def plot_tracks(
         for bt in beat_times:
             ax.axvline(bt, color="#cccccc", lw=0.3, alpha=0.5)
 
-        label = name
-        if equations and idx < len(equations):
-            label = f"{name}:  y = {equations[idx]}"
         ax.set_ylabel(name, fontsize=9, fontweight="bold", color=color)
         ax.set_ylim(-1.1, 1.1)
         ax.grid(True, axis="y", alpha=0.2)

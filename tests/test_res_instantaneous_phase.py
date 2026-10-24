@@ -1,7 +1,6 @@
 """Tests for Slice 1: Instantaneous Phase Alignment (Hilbert transform)."""
 
 import numpy as np
-import pytest
 
 from src.res_synthesis import _corr, _render_partial, align_instantaneous_phase
 
@@ -30,7 +29,7 @@ def test_align_instantaneous_phase_fixes_phase_offset():
     c_before = _corr(target, r_before)
     
     # Apply phase alignment
-    d_phi = align_instantaneous_phase(target, p, sr)
+    align_instantaneous_phase(target, p, sr)
     
     # Render after alignment
     r_after = _render_partial(p, n, sr)

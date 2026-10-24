@@ -1,6 +1,5 @@
 """Guards for the web-UI stem-separation plumbing."""
 import numpy as np
-import pytest
 import soundfile as sf
 
 

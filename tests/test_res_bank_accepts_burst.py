@@ -11,10 +11,8 @@ fall. If the class-C magnitude-domain gate is ever narrowed, this goes red
 before the shipped audio does.
 """
 import numpy as np
-import pytest
 
 from src.res_bank import tournament_section
-from src.res_synthesis import _score
 
 SR = 22050
 DUR = 2.5

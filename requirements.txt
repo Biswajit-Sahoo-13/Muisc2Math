@@ -1,5 +1,7 @@
 # Core engine. Source separation (Demucs) and note extraction (basic-pitch) are
 # optional extras - see INSTALL.md.
+# Keep in sync with [project].dependencies in pyproject.toml (the extras live
+# only there).
 numpy>=1.24.0
 scipy>=1.10.0
 soundfile>=0.12.0

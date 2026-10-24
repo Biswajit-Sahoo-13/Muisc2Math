@@ -45,7 +45,7 @@ class TestL1SaveAudioNeverSilent:
 class TestL2FixtureIsExact:
     def test_fixture_does_not_clip(self, tmp_path):
         p = tmp_path / "chord.wav"
-        model = generate_benchmark_chord(p, duration=2.0, sr=SR)
+        generate_benchmark_chord(p, duration=2.0, sr=SR)
         audio, _ = sf.read(str(p), always_2d=False)
         if audio.ndim > 1:
             audio = audio.mean(axis=1)

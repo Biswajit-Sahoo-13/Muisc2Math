@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.sinusoidal_model import (  # noqa: E402
-    _prepare_frames, _smooth_envelope, refine_track, sinusoidal_reconstruction,
-    SinusoidalTrack,
+    _prepare_frames, _smooth_envelope, refine_track, SinusoidalTrack,
 )
 
 SR = 22050
@@ -86,7 +85,6 @@ print()
 print("=" * 74)
 print("CLAIM 4: the +-2 Hz bounded Brent search jumps into the first sidelobe")
 print("=" * 74)
-from scipy.optimize import minimize_scalar  # noqa: E402
 
 T = 2.5
 print(f"  first zero of the projection kernel: 1/T = {1/T:.4f} Hz")

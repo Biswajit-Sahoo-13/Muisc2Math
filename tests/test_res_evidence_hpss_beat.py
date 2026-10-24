@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import numpy as np
-import pytest
 import soundfile as sf
 
 from src.res_evidence import build_evidence

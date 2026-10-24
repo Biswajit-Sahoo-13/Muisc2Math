@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import scipy.signal as signal
 from src.analysis import compute_normalized_stft, find_parabolic_peaks
-from src.tracking import fit_log_linear_envelope, track_sinusoids, tracks_to_equations
+from src.tracking import fit_log_linear_envelope, track_sinusoids
 
 
 class TestAnalysis(unittest.TestCase):

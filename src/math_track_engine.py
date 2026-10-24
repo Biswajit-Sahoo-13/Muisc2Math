@@ -25,12 +25,12 @@ The four primitives that build all viral equation music:
 
 from __future__ import annotations
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 
-from src.safe_eval import safe_eval, SafeEvalError, SAFE_FUNCTIONS, SAFE_CONSTANTS
+from src.safe_eval import safe_eval, SafeEvalError
 
 SR = 44100
 

@@ -6,7 +6,6 @@ from src.residual import (
     compute_error_metrics,
     estimate_sinusoid_by_projection,
     iterative_residual_refinement,
-    find_dominant_residual_frequencies,
 )
 
 

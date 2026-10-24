@@ -1,7 +1,6 @@
 """Tests for LPC Formant Noise class in res_bank and res_synthesis (Phase 4)."""
 
 import numpy as np
-import pytest
 import scipy.signal
 
 from src.res_synthesis import _render_partial
@@ -31,7 +30,7 @@ def test_lpc_noise_captures_formant_envelope():
     """Verify that lpc_noise_hypothesis fits formant poles on vocal-like filtered noise."""
     sr = 22050
     n = 4096
-    t = np.arange(n) / sr
+    np.arange(n) / sr
 
     # Create synthetic vocal tract response: noise shaped by two formants (e.g. 700 Hz and 2200 Hz)
     rng = np.random.default_rng(42)
@@ -52,7 +51,7 @@ def test_lpc_noise_captures_formant_envelope():
     # Render candidate
     rendered = _render_partial(part, n, sr)
     e_before = float(np.sum(vocal_target ** 2))
-    e_after = float(np.sum((vocal_target - rendered) ** 2))
+    float(np.sum((vocal_target - rendered) ** 2))
 
     # Spectral envelope matching must drop residual error or match spectral shape
     assert variant.err < e_before

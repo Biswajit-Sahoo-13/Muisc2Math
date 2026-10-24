@@ -11,12 +11,8 @@ import unittest
 import numpy as np
 
 from src.sinusoidal_model import (
-    model_tracks,
     noise_residual_layer,
-    refine_track,
     sinusoidal_reconstruction,
-    synthesize_track,
-    synthesize_tracks,
 )
 
 

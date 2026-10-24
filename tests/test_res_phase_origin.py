@@ -27,7 +27,6 @@ partials.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from src.res_evidence import _rephase_to_section, build_evidence
 from src.res_loop import render_ledger, run_loop

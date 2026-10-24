@@ -28,7 +28,7 @@ class TestArchitectureImports(unittest.TestCase):
 
     def test_synthesis_primitives_accessible(self):
         """Shared synthesis primitives are available from res_synthesis and re-exported by res_loop."""
-        from src.res_synthesis import _corr, _render_partial, _support_mask, _score
+        from src.res_synthesis import _corr, _render_partial
         from src.res_loop import _corr as loop_corr, _render_partial as loop_render
         self.assertEqual(_corr, loop_corr)
         self.assertEqual(_render_partial, loop_render)

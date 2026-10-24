@@ -12,14 +12,13 @@ Validates:
 """
 
 import unittest
-import json
 import tempfile
 import numpy as np
 from pathlib import Path
 
 from src.safe_eval import safe_eval, SafeEvalError
 from src.math_track_engine import (
-    Project, Track, render, render_to_wav,
+    Project, render, render_to_wav,
     midi2freq, freq2midi,
     demo_sinc_drop, demo_math_remix, demo_ambient,
 )

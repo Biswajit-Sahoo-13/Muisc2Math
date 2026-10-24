@@ -1,6 +1,4 @@
 """The Benchmarks tab: the sample-test harness, driven through the real app."""
-import numpy as np
-import pytest
 
 
 def test_benchmarks_tab_renders_the_recorded_labels():

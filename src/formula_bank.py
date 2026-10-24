@@ -539,8 +539,6 @@ def fit_best_formula_for_segment(
     if target_spec is None:
         return None
 
-    lam_init = _estimate_initial_lambda(y_seg, sr)
-
     A = float(np.max(np.abs(y_seg)))
     if A <= 1e-6:
         A = 0.5

@@ -28,9 +28,8 @@ Featured Equations:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 import numpy as np
 import soundfile as sf
 import matplotlib
@@ -205,7 +204,6 @@ def build_viral_math_phonk_project(
     4. Hi-Hats: #1/10 Tresillo floor(3q/8) pattern
     5. Pad/Tension: #4/10 Shepard tone infinite riser
     """
-    beat_sec = 60.0 / bpm
 
     # 16-step rhythmic patterns
     # Four-on-the-floor kick

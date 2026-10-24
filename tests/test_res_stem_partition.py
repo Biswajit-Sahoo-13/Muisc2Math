@@ -9,7 +9,6 @@ the downstream loop silently skipped it as an empty-energy stem.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from src.res_evidence import separate_stems
 

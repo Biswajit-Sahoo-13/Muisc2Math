@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import scipy.signal as signal
-import soundfile as sf
 import librosa
 
 
@@ -96,7 +95,6 @@ def find_parabolic_peaks(
         true_log_mag = beta - 0.25 * (alpha - gamma) * p
         A = exp(true_log_mag) / coherent_gain
     """
-    normalized_frame = raw_mags_frame / coherent_gain
     # Find local maxima bins
     min_height = threshold * coherent_gain
     peak_bins, _ = signal.find_peaks(

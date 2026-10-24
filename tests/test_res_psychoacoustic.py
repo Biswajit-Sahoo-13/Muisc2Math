@@ -1,7 +1,6 @@
 """Tests for Slice 5: Psychoacoustic Masking-Weighted Loss in error_correction."""
 
 import numpy as np
-import pytest
 
 from src.error_correction import (
     psychoacoustic_masking_threshold,

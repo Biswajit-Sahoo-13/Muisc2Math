@@ -1,7 +1,6 @@
 """Tests for Clustered Joint Refinement in res_loop (Phase 4)."""
 
 import numpy as np
-import pytest
 
 from src.res_synthesis import _corr, _render_partial
 from src.res_loop import refine_section_parameters

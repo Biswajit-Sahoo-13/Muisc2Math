@@ -21,6 +21,24 @@ defaults:
     shell: bash
 
 jobs:
+  lint:
+    name: lint (ruff, bug-class rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install "ruff>=0.17"
+      # Rules live in pyproject.toml [tool.ruff.lint]: unused imports and
+      # locals, undefined names, redefinitions, syntax errors. These catch
+      # real defect classes (a stale local produced the tournament mis-gate;
+      # an undefined annotation name survives until something calls
+      # get_type_hints), which is why the gate exists at all.
+      - name: Lint
+        run: ruff check .
+
   test:
     name: test ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}

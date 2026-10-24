@@ -7,8 +7,6 @@ import tempfile
 from src.synthesis import (
     compute_phase_integration,
     compute_envelope,
-    render_component,
-    render_model,
     generate_benchmark_chord,
 )
 

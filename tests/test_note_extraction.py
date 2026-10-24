@@ -1,13 +1,11 @@
 """Tests for note extraction (pyin) and harmonic grouping."""
 
 import unittest
-import numpy as np
 import tempfile
 from pathlib import Path
 
-from src.synthesis import generate_benchmark_melody, render_model, save_audio
-from src.analysis import load_audio, compute_normalized_stft
-from src.tracking import track_sinusoids
+from src.synthesis import generate_benchmark_melody
+from src.analysis import load_audio
 from src.note_extraction import extract_melody_pyin, group_partials_into_notes, NoteEvent
 
 

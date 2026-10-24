@@ -14,7 +14,6 @@ Two independent defects made the evidence stage blind:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from src.res_evidence import _loudest_window, multi_resolution_peaks
 

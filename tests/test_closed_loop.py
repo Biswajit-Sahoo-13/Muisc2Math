@@ -8,7 +8,6 @@ Validates the full cycle:
 """
 
 import unittest
-import numpy as np
 import tempfile
 from pathlib import Path
 
@@ -27,7 +26,7 @@ class TestClosedLoop(unittest.TestCase):
             recon_wav = tmp_path / "rendered_from_equations.wav"
 
             # 1. Forward Synthesis: Generate benchmark chord (A4, C#5, E5 with exponential decay)
-            gt_model = generate_benchmark_chord(chord_wav, duration=2.0, sr=44100)
+            generate_benchmark_chord(chord_wav, duration=2.0, sr=44100)
             self.assertTrue(chord_wav.exists())
 
             # 2. Reverse Engineering: Discover equations from audio

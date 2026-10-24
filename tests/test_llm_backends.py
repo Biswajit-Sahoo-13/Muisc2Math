@@ -5,14 +5,12 @@ output pipe open after it is killed, which makes ``subprocess.run(timeout=)``
 block forever instead of timing out. These tests pin the bounded behaviour.
 """
 import os
-import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-import numpy as np
 
 from src.llm_backends import (
     BACKENDS,

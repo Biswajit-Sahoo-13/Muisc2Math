@@ -227,7 +227,6 @@ def main():
         print(f"// written: {args.out}")
     if args.check and args.out:
         from src.analysis import load_audio
-        import soundfile as sf
 
         keep, _, hw = collect(ledger, args.ratio)
         sr = int(ledger["sample_rate"])

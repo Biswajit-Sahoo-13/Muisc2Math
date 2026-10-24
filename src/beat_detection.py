@@ -10,7 +10,7 @@ deterministic and dependency-light (numpy/scipy/librosa only).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import scipy.signal as signal
 import librosa

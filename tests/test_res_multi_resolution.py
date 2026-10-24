@@ -1,7 +1,6 @@
 """Tests for Slice 4: Multi-Resolution Spectral Evidence in res_evidence."""
 
 import numpy as np
-import pytest
 
 from src.res_evidence import (
     multi_resolution_peaks,

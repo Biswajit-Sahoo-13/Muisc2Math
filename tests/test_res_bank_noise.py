@@ -1,9 +1,8 @@
 """Tests for Phase 2: Stochastic Noise Channel (Class C++) in res_bank."""
 
 import numpy as np
-import pytest
 
-from src.res_synthesis import _render_partial, _corr
+from src.res_synthesis import _render_partial
 from src.res_bank import filtered_noise_hypothesis, tournament_section
 
 

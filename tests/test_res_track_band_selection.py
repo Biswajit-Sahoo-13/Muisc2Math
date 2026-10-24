@@ -1,6 +1,4 @@
 """Guard for band-reserved track selection (the -13 dB high-band deficit)."""
-import numpy as np
-import pytest
 
 from src.sinusoidal_model import (
     HIGH_BAND_HZ, select_tracks_banded,

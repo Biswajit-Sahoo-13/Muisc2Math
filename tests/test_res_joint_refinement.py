@@ -1,7 +1,6 @@
 """Tests for Slice 3: Joint Non-Linear Parameter Refinement in res_loop."""
 
 import numpy as np
-import pytest
 
 from src.res_synthesis import _corr, _render_partial
 from src.res_loop import refine_section_parameters

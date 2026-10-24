@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
-import librosa
 import soundfile as sf
 import matplotlib.pyplot as plt
 
@@ -22,7 +21,6 @@ from src.analysis import load_audio
 from src.beat_detection import detect_beats
 from src.toneprint import identify_tones
 from src.formula_bank import (
-    FORMULA_BANK,
     build_equation_string,
     fit_best_formula_for_segment,
 )

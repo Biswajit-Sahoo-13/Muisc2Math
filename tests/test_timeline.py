@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
 
 from src.math_track_engine import Project, demo_sinc_drop, render
 from src.math_track_visualize import (
