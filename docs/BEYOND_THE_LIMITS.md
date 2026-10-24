@@ -249,3 +249,44 @@ open-ended. Same conclusion as the roadmap's Part I, now with the field's
   Bake-Off arXiv:2507.06917.
 - Mixture-fitting: differentiable-DSP unsupervised separation
   arXiv:2201.09592; GuideSep (MIDI-conditioned) arXiv:2507.01339.
+
+
+---
+
+## The 100%/0% map: which technologies achieve perfection, and how (2026-10-24 sweep)
+
+The question "what can achieve 100% and 0%" has a precise answer per axis:
+
+| Technology class | 100% bit-exact? | 100% perceptual (ABX)? | Cost |
+|---|---|---|---|
+| Copy / container (WAV, DAW bounce, bit-perfect playback) | Yes, by definition | Yes | full bitrate |
+| Lossless codecs (FLAC/ALAC/WavPack/APE/LA/OptimFROG/ALS) | Yes - MD5-verified by construction | Yes | 50-70% of PCM |
+| Neural lossless (Trilobyte 2026, Aalto 2025) | Yes | Yes | +18% vs FLAC at 16-bit; loses at 24-bit |
+| Core + exact residual (MPEG-4 SLS/HD-AAC, IntMDCT, OLAC) | Yes (integer-transform layer) | scalable lossy-to-exact | ~zero adoption |
+| Transform lossy (MP3/AAC/Opus) | no | Yes, verified: Opus 160 kbps passes TOST equivalence (p=0.024) | 96-160 kbps |
+| Neural lossy (EnCodec/DAC/WavTokenizer) | no - no exact mode exists (MAE 18,376 vs FLAC 156) | near, never at reference (MUSHRA <=94.8) | 0.48-24 kbps |
+| Parametric / sinusoidal (HILN, this engine) | no - the class has no lossless member | no on dense material (HILN verification) | 6-16 kbps |
+| Generative AI (Suno/Udio, voice cloning) | no - cannot by construction | never verified; FAD/MOS measure plausibility | - |
+
+**The law**: 100% is achieved only by identity and exact coding of the
+residual - never by modeling. Every technology that models the waveform
+pays for compactness with a permanent, nonzero error floor it can shrink
+but never cross; and the same modeling machinery succeeds EXACTLY when it
+stops modeling and starts entropy-coding the residual (Trilobyte, MPEG-4
+SLS). The 0%-quality end is documented too: HILN at 6 kbps scored worse
+than MP3 on dense material; Opus at 6 kbps scored worse than AMR-NB.
+
+**The open door for this engine** (verified gap): no published standard
+pairs a parametric/sinusoidal core with an exact residual stream -
+SLS/HD-AAC pairs it with an MDCT transform core. A parametric core +
+lossless residual (the chase + FLAC-class remainder, Breaker 1C above)
+would be the first of its class: exact at full rate, scalable down to the
+compact equation sheet.
+
+Key sources: FLAC MD5 (Wikipedia); Trilobyte arXiv:2603.08683 (residual
+MAE 156 vs DAC 1,604 vs EnCodec 18,377); Opus transparency arXiv:2610.20246
+(160 kbps TOST p=0.024; 128 kbps transparent for general listeners only);
+HA 2014 multiformat test (Opus 96 kbps 93.0 vs MP3 128 kbps 84.7); MPEG-4
+HILN verification (worse than MP3/TwinVQ at 6 kbps); MPEG-4 SLS
+(Fraunhofer AES-117); IntMDCT lifting (IEEE TASLP 2006); exact INR
+arXiv:2502.21001; voice-clone detection arXiv:2410.03791.
