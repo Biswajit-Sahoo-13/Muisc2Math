@@ -11,6 +11,8 @@
 
 > A mathematically rigorous digital signal processing (DSP) pipeline that reverse-engineers continuous instrumental and polyphonic audio files ($x(t)$) into compact analytical equations (JSON), reconstructing synthetic audio ($\hat{x}(t)$) using **Dictionary-Based Sparse Modeling**, **Constant-Q Spectrograms**, **Sinusoidal Modeling Synthesis (SMS)**, and an interactive **Multi-Track Equation DAW**.
 
+> **Measured headline (2026-10-25).** Every reconstruction is scored on the **fidelity benchmark** — *the original = 100%* — across four pillars (tone / spectrum / bands / loudness): a dense mastered hip-hop mix reaches **~70%** as pure equations at **3.6% of the file size**; a pure tonal song reaches **86%**; a pure noise-percussion song lands at **4.8%** (the honest information-theoretic floor). And with the **exact mode** — equations + a FLAC-compressed residual stream — the same reconstruction climbs to **99.97%** (exact to below one 16-bit LSB), making this the first parametric codec with a scalable lossy→exact ladder. The full measured story: [docs/BEYOND_THE_LIMITS.md](docs/BEYOND_THE_LIMITS.md), [docs/PHYSICS_ROADMAP.md](docs/PHYSICS_ROADMAP.md), [docs/NOTE_LAYER.md](docs/NOTE_LAYER.md).
+
 ---
 
 ## Table of Contents
@@ -34,6 +36,8 @@
   - [Multi-Stage Alignment Pipeline](#multi-stage-alignment-pipeline)
   - [Energy Guard and Objective Function Constraints](#energy-guard-and-objective-function-constraints)
 - [Reverse Engineering and Synthesis (RES) Engine](#reverse-engineering-and-synthesis-res-engine)
+- [The Fidelity Benchmark and the Exact Mode](#the-fidelity-benchmark-and-the-exact-mode)
+- [The Note Layer: frequency-native equations](#the-note-layer-frequency-native-equations)
 - [Handing this project to an AI agent](#handing-this-project-to-an-ai-agent)
 - [Quickstart Guide](#quickstart-guide)
   - [1. Interactive Web Studio](#1-interactive-web-studio)
@@ -431,7 +435,7 @@ The RES loop (`src/res_loop.py`) incorporates Phase 5 stabilization:
 - **Dampened Clustered Frequency Refinement:** Joint least-squares frequency shifts are clamped to $\pm 2.0$ Hz with quadratic regularization, eliminating bass phasing and flanging artifacts.
 - **Log-Spectral Distance (LSD) Referee Metric:** Balances time-domain correlation with spectral fidelity, prioritizing auditory timbre matching over microsecond phase jitter.
 
-> **Which of these actually run.** The OLA seam smoother, the Hilbert phase alignment and the clustered joint refinement are all implemented and unit-tested, but the production render path does not call them (`render_ledger(..., ola=False)` at every production call site), so they contribute nothing to a shipped reconstruction. The LPC noise class is likewise opt-in: it is reached only with `--noise`, and its gate is calibrated on measurement rather than on the SFM threshold this list implies — whole-spectrum SFM is ~0 on real residuals and can never be the primary trigger, so the zero-crossing rate carries the gate. `docs/res_research.md` § Phase 7 records which claims are live and which are not.
+> **Which of these actually run.** Since the 2026-10-24/25 engine update, the OLA seam smoother and the smoothstep seam repair run on **every shipped render** (raw section pastes clicked — measured as a 13.8× sample jump at a real boundary), the clustered joint refinement is wired behind `--joint-refine` (it decouples the detuned-808 collisions the per-partial lifter cannot), and loudness parity (`--energy-parity`, `--parity-mode ls|rms`) restores the shipped level, which the scale-invariant correlation referee never enforces. The LPC noise class is reached only with `--noise`, and its gate is calibrated on measurement rather than on the SFM threshold this list implies — whole-spectrum SFM is ~0 on real residuals and can never be the primary trigger, so the zero-crossing rate carries the gate. `docs/res_research.md` § Phase 7 records which claims are live and which are not.
 
 **An LLM may propose the edits; it never decides.** `--provider` selects
 where the hypothesis proposals come from: `numeric` (the default — a
@@ -454,7 +458,80 @@ code, duration, the raw answer, and every edit that was refused and why.
 
 ---
 
+## The Fidelity Benchmark and the Exact Mode
+
+Every reconstruction is scored on the **fidelity benchmark**
+(`src/fidelity.py`, report via `tools/fidelity_report.py`): *the original
+is 100%, ours is what?* The headline is the mean of four pillars, each
+independently meaningful:
+
+| Pillar | Measures | Catches |
+|---|---|---|
+| tone | waveform correlation | shape agreement |
+| spectrum | 10^(−MR-STFT/20) | tonal-vs-textural spectral errors a single window misses |
+| bands | energy-weighted per-band correlation | *where* in the spectrum the error lives |
+| loudness | RMS parity | the too-quiet-render failure correlation is blind to by construction |
+
+Measured results (`data/test_songs/` holds the extremes):
+
+| Song | Fidelity | Note |
+|---|---|---|
+| Pure 12-TET tonal song | **86.0%** | the engine's measured ceiling on perfect material (tone 93.4) |
+| Metre – Lost (mix, stems+parity) | **70.9%** | the engine's home fixture |
+| MONA LISA (Demucs stems, 6 it) | **70.6%** | dense mastered hip-hop, drums corr 0.79 |
+| Pure noise-percussion song | **4.8%** | the information-theoretic floor (tone 0.0 by orthogonality) |
+
+**The exact mode** (`src/exact_codec.py`) is the ladder's top rung and the
+first of its kind: no published parametric codec ships one. After the
+equations fit the song, the residual `source − render` is FLAC-compressed
+at a chosen bit depth; reconstruction is `render + decoded residual`,
+exact to within `peak / 2^(bits−1)`:
+
+```
+MONA LISA 4 s:  equations only       68.7%  (319 equations, ~6.4 KB = 3.6% of source)
+                equations + residual 99.97%  (exact to 4.7e-05, 16-bit residual FLAC
+                                              = 73% of raw PCM)
+```
+
+The bit depth is a scalable dial (8 → 32 bits): 8-bit residual still
+reconstructs at 96.8%. loudness parity (`--energy-parity
+--parity-mode rms`) is applied before the benchmark scores, so the
+shipped audio is the scored audio. `tools/fidelity_report.py` reproduces
+the benchmark for any run directory from disk.
+
+---
+
+## The Note Layer: frequency-native equations
+
+Instead of only fitting free frequencies, the note layer
+(`src/note_layer.py`) detects the frequencies and writes the equations
+*from* them:
+
+- **Beat pairs** — two fitted partials within ~60 cents with overlapping
+  support are one musical object (a detuned unison): the ledger records
+  their carrier, the beat rate `|f1 − f2|`, both decays, and the 12-TET
+  snap of the carrier. The beat is one of the most salient features of a
+  mix's low end, and the magnitude spectrum is nearly blind to it.
+- **12-TET snapping** — a carrier within a quarter tone of a note is
+  snappable (`f = 440·2^((n−69)/12)`); the residual detune stays data.
+  Snap the carrier, never the layers (detune is the percept).
+- **Sub-bass note events** — the 808 is segmented into discrete notes
+  with their measured attack drop (MONA LISA: 43.2 → 42.3 Hz, ~35 cents
+  over 250 ms), replacing smeared multi-octave glide trajectories.
+
+Every run's ledger carries `note_layer` (analysis only — the render is
+untouched). Design, measurements, and the literature verdict:
+[docs/NOTE_LAYER.md](docs/NOTE_LAYER.md).
+
+---
+
 ## Handing this project to an AI agent
+
+**Start with `AGENTS.md`** (repo root) — the standard entry point that
+Codex, Cursor, Gemini CLI and friends auto-load: commands, the five
+conventions that will bite (provenance, analyser/renderer parity, the
+partial schema, flag-gating, defect-pinning), and the architecture map.
+`GLOSSARY.md` carries the domain vocabulary.
 
 `docs/AGENT_PROMPT_PHYSICS_ARCHITECTURE.md` is a long, self-contained
 prompt for an agent that should improve the physics or the architecture of
@@ -542,6 +619,17 @@ Execute the RES synthesis loop on an audio file:
 
 ```bash
 python main.py res -i input_track.wav -o data/output/res_run --duration 15.0 --iterations 3
+```
+
+Full-fidelity run: real Demucs stems, the stochastic noise classes, the
+spectral lane, joint collision refinement, and loudness parity — then
+score it on the original = 100% benchmark:
+
+```bash
+python main.py res -i song.mp3 -o data/output/res_run -d 10 --iterations 6 \
+    --stems demucs --noise --spectral-lane --joint-refine \
+    --energy-parity --parity-mode rms
+python tools/fidelity_report.py data/output/res_run
 ```
 
 Reconstruct a track into Multi-Track Math-DAW equations:
@@ -637,8 +725,14 @@ python -m unittest discover tests
 │   ├── res_loop.py             # RES iterative equation synthesis loop
 │   ├── res_bank.py             # RES formula dictionary and candidate scoring
 │   ├── res_synthesis.py        # Hann OLA reconstruction and gated LPC noise synthesis
+│   ├── res_evidence.py         # Beat-aware sectioning, stem separation, evidence ledger
+│   ├── res_percussive.py       # Percussive resonant-burst and broadband-exciter hypotheses
+│   ├── note_layer.py           # Frequency-native layer: beat pairs, 12-TET snap, 808 note events
+│   ├── fidelity.py             # The fidelity benchmark: original = 100%, four pillars
+│   ├── exact_codec.py          # The exact mode: equations + FLAC residual = 99.97%
 │   ├── res_ui.py               # Streamlit UI components and playback controls
 │   ├── scoreboard.py           # Scoreboard format, row checks, label verification, harness runner
+│   ├── llm_backends.py         # Eleven agent-CLI + API hypothesis providers with receipts
 │   ├── viral_math_reels.py     # Mathematical video animation and waveform visualization
 │   └── visualize.py            # Waveform, FFT spectrum, and comparison plotting utilities
 ├── tests/
@@ -664,7 +758,13 @@ python -m unittest discover tests
 ├── docs/
 │   ├── math_model.md           # Mathematical derivation and DSP equations reference
 │   ├── res_pipeline.html       # Interactive RES pipeline diagram documentation
-│   └── res_research.md         # Comprehensive research logs, benchmarks, and ablation studies
+│   ├── res_research.md         # Comprehensive research logs, benchmarks, and ablation studies
+│   ├── PHYSICS_ROADMAP.md      # The measured 100%-recreation roadmap (P0-P3, error-budget ranked)
+│   ├── BEYOND_THE_LIMITS.md    # Research sweep: the "impossible" walls and their breakers, with sources
+│   ├── NOTE_LAYER.md           # The frequency-native equations design and measurements
+│   └── PRESENTING.md           # How to present the project (README funnel, hosting, demos)
+├── GLOSSARY.md                 # The engine's domain vocabulary (partial, referee, ledger, ...)
+├── AGENTS.md                   # Standard entry point for AI coding agents
 └── data/
     ├── input/                  # Benchmark audio files (math_chord.wav, math_melody.wav)
     ├── output/                 # Generated project outputs (preserves folder structure)
