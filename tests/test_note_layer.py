@@ -137,7 +137,7 @@ def test_snap_carrier_json_clean() -> None:
 def test_detect_note_events_finds_the_808_notes() -> None:
     """Two sub-bass notes with the measured attack drop: the detector must
     segment them and report f_attack > f_sustain per note."""
-    sr = SR = 22050
+    sr = 22050
     total = sr  # 1 s
     y = np.zeros(total)
 
@@ -169,7 +169,7 @@ def test_sub_bass_note_partials_outrender_a_smeared_glide() -> None:
     events must beat the smear in the band that carries the energy."""
     from src.res_synthesis import _render_partial
 
-    sr = SR = 22050
+    sr = 22050
     total = sr  # 1 s
     y = np.zeros(total)
 
