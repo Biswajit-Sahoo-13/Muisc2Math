@@ -326,6 +326,7 @@ def run_res_payload(
     parity_mode: str = "ls",
     target_corr: float = 0.0,
     mrstft_lane: bool = False,
+    polish: bool = False,
 ) -> Dict[str, Any]:
     """Analyze ``upload_bytes`` with the RES loop and collect display artifacts.
 
@@ -462,7 +463,7 @@ def run_res_payload(
             enable_noise=enable_noise, spectral_lane=spectral_lane,
             k_notes=k_notes, k_hits=k_hits,
             energy_parity=energy_parity, parity_mode=parity_mode,
-            mrstft_lane=mrstft_lane,
+            mrstft_lane=mrstft_lane, polish=polish,
         )
     if progress is not None:
         progress.update(stage="packaging", stage_pct=1.0,

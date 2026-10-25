@@ -251,6 +251,7 @@ def _section_update(
     sr: int,
     start_sample: int = 0,
     stft_half_window_s: float = 0.0,
+    polish: bool = False,
 ) -> int:
     """Greedy coordinate lifter over the equation set, one section at a time.
 
@@ -263,6 +264,12 @@ def _section_update(
     *section correlation* (the referee's own metric, VERIFY) strictly
     improves. The section score can therefore never get worse, and each
     iteration is verified against the original anyway.
+
+    ``polish=True`` adds one candidate per partial: a bounded continuous
+    refinement of the decay around the best grid value (the frequency already
+    has its main-lobe refinement; the decay was the last discrete-grid
+    parameter). Flag-gated - the default grid-only behaviour is the published
+    one.
     Returns the number of accepted edits.
     """
     n = len(y_sec)
@@ -461,6 +468,39 @@ def _section_update(
                     candidates.append((err, f_refined, best_lam, a, ph))
             except Exception:
                 pass
+            if polish:
+                # The decay grid is a handful of multipliers around the
+                # analyser's estimate; the true decay rarely lands on it.
+                # Bounded continuous refinement around the best grid decay,
+                # with the closed-form (amplitude, phase) projection inside
+                # the objective - the P2 "gradient fitting" increment,
+                # flag-gated so the default grid-only behaviour is the
+                # published one. The polished candidate still has to win the
+                # correlation gate below like every other candidate.
+                try:
+                    from scipy.optimize import minimize_scalar
+
+                    if best_lam > 0.0:
+                        lo_p, hi_p = 0.5 * best_lam, 2.0 * best_lam
+                    else:
+                        # The zero-decay grid spans [0, 4]; give the search
+                        # the same room the grid itself covers.
+                        lo_p, hi_p = 0.0, 4.0
+                    res_p = minimize_scalar(
+                        lambda l: project(f0, l)[2],
+                        bounds=(lo_p, hi_p), method="bounded",
+                        options={"xatol": 1e-3},
+                    )
+                    lam_p = float(res_p.x)
+                    if abs(lam_p - best_lam) > 1e-4:
+                        a_p, ph_p, err_p = project(f0, lam_p)
+                        if (
+                            np.isfinite(a_p) and np.isfinite(ph_p)
+                            and np.isfinite(err_p) and a_p <= a_bound
+                        ):
+                            candidates.append((err_p, f0, lam_p, a_p, ph_p))
+                except Exception:
+                    pass
 
         drop_err = float(np.sum(target ** 2))
         drop_cand = (drop_err, 0.0, 0.0, 0.0, 0.0)  # a=0 renders nothing
@@ -1365,13 +1405,14 @@ def _mrstft_lane_ok(
 def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[str], Optional[np.ndarray]]:
     """Self-contained, picklable section processing worker."""
     (sec, y_sec, sr, w_start, st_hw, bank, spectral_lane, *rest) = args
-    # ``enable_noise``, ``k_notes``, ``k_hits`` and ``joint_refine`` were
-    # added after the worker tuple was already public; accept the older
-    # tuples rather than breaking every existing caller.
+    # ``enable_noise``, ``k_notes``, ``k_hits``, ``joint_refine`` and
+    # ``polish`` were added after the worker tuple was already public;
+    # accept the older tuples rather than breaking every existing caller.
     enable_noise = bool(rest[0]) if len(rest) > 0 else False
     k_notes = int(rest[1]) if len(rest) > 1 else 2
     k_hits = int(rest[2]) if len(rest) > 2 else 12
     joint_refine = bool(rest[3]) if len(rest) > 3 else False
+    polish = bool(rest[4]) if len(rest) > 4 else False
     if len(y_sec) < 8:
         return sec, [], None
 
@@ -1382,6 +1423,7 @@ def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[s
     _section_update(
         y_sec, sec["partials"], sr,
         start_sample=w_start, stft_half_window_s=st_hw,
+        polish=polish,
     )
     if joint_refine:
         # The lifter refines each partial alone; partials within ~10 Hz of
@@ -1644,6 +1686,7 @@ def run_loop(
     parity_mode: str = "ls",
     joint_refine: bool = False,
     mrstft_lane: bool = False,
+    polish: bool = False,
 ) -> Dict[str, Any]:
     """Iterate the RES loop and persist checkpoints + outputs to ``out_dir``.
 
@@ -1760,7 +1803,7 @@ def run_loop(
             w_end = min(n, int(sec.get("end_sample", round(sec["end"] * sr))))
             y_sec = y[w_start:w_end]
             tasks.append((sec, y_sec, sr, w_start, st_hw, bank, spectral_lane,
-                          enable_noise, k_notes, k_hits, joint_refine))
+                          enable_noise, k_notes, k_hits, joint_refine, polish))
 
         n_workers = (
             workers if workers is not None
@@ -1967,6 +2010,7 @@ def run_stems_res_loop(
     k_hits: int = 12,
     energy_parity: bool = False,
     parity_mode: str = "ls",
+    polish: bool = False,
 ) -> Dict[str, Any]:
     """Execute Tri-Mode Stem Separation and Multi-Track RES Tournament Loop.
 
@@ -2108,6 +2152,7 @@ def run_stems_res_loop(
                 spectral_lane=spectral_lane,
                 enable_noise=enable_noise,
                 k_notes=k_notes, k_hits=k_hits,
+                polish=polish,
             )
             recon_s = render_ledger(s_ledger, n, ola=True)
 

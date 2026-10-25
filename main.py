@@ -410,6 +410,7 @@ def cmd_res(args: argparse.Namespace) -> None:
             k_notes=args.k_notes, k_hits=args.k_hits,
             energy_parity=bool(getattr(args, "energy_parity", False)),
             parity_mode=getattr(args, "parity_mode", "ls"),
+            polish=bool(getattr(args, "polish", False)),
         )
         print("\n=== Multi-Track Stem Ledger (res/2.0-multitrack) ===")
         for s_name in ("bass", "drums", "vocals", "other"):
@@ -456,6 +457,7 @@ def cmd_res(args: argparse.Namespace) -> None:
             parity_mode=getattr(args, "parity_mode", "ls"),
             joint_refine=bool(getattr(args, "joint_refine", False)),
             mrstft_lane=bool(getattr(args, "mrstft_lane", False)),
+            polish=bool(getattr(args, "polish", False)),
         )
 
     iterations = args.iterations
@@ -1122,6 +1124,14 @@ def main() -> None:
              "resolution STFT improvement when waveform correlation stalls "
              "(the selection criterion of Yamamoto 2019 / DDSP). Default "
              "off - published numbers move only after re-measurement",
+    )
+    p_res.add_argument(
+        "--polish", action="store_true",
+        help="Flag-gated lifter increment: continuously refine each "
+             "partial's decay around the best grid value (bounded scalar "
+             "optimization with the closed-form amplitude/phase projection "
+             "inside). Default off - published numbers move only after "
+             "re-measurement",
     )
     p_res.add_argument(
         "--k-hits", type=int, default=12,
