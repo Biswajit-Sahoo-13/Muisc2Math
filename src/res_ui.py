@@ -324,6 +324,8 @@ def run_res_payload(
     k_hits: int = 12,
     energy_parity: bool = False,
     parity_mode: str = "ls",
+    target_corr: float = 0.0,
+    mrstft_lane: bool = False,
 ) -> Dict[str, Any]:
     """Analyze ``upload_bytes`` with the RES loop and collect display artifacts.
 
@@ -346,6 +348,13 @@ def run_res_payload(
     ``enable_noise`` lets the hypothesis bank model the residual with a
     stochastic class (LPC formant noise). A sum of sinusoids cannot express
     breath, air or sibilance, so that content is absent without it.
+
+    ``target_corr`` is the loop's early-stop correlation. The web default is
+    deliberately 0.0 (never stop early): the UI promises the requested
+    number of iterations and plots the full convergence curve, and the demo
+    fixture can exceed the CLI's 0.98 stop. The CLI's ``--target-corr``
+    default (0.98, main.py) optimizes for compute instead - both choices
+    are explicit, in one place each.
     """
     from src.res_evidence import build_evidence
     from src.res_loop import run_loop, _equations_text
@@ -428,7 +437,7 @@ def run_res_payload(
         multi = run_stems_res_loop(
             str(saved), str(out_dir), stems_mode=stem_mode, sr=sr,
             max_duration=duration, window_s=window_s, iterations=iterations,
-            target_corr=0.0, bank=bank, progress_fn=_prog if progress is not None else None,
+            target_corr=target_corr, bank=bank, progress_fn=_prog if progress is not None else None,
             enable_noise=enable_noise, spectral_lane=spectral_lane,
             k_notes=k_notes, k_hits=k_hits,
         )
@@ -448,11 +457,12 @@ def run_res_payload(
     else:
         ledger = run_loop(
             ledger, str(saved), str(out_dir),
-            iterations=iterations, target_corr=0.0, bank=bank,
+            iterations=iterations, target_corr=target_corr, bank=bank,
             progress_fn=_prog if progress is not None else None,
             enable_noise=enable_noise, spectral_lane=spectral_lane,
             k_notes=k_notes, k_hits=k_hits,
             energy_parity=energy_parity, parity_mode=parity_mode,
+            mrstft_lane=mrstft_lane,
         )
     if progress is not None:
         progress.update(stage="packaging", stage_pct=1.0,

@@ -1306,6 +1306,62 @@ def _referee_ok(
     return True
 
 
+# The MR-STFT acceptance lane. Literature: the multi-resolution STFT
+# distance is the selection criterion the neural-synthesis literature
+# converged on (Yamamoto et al. 2019, arXiv:1910.11480; Engel et al. DDSP
+# 2020 use it for model selection; the auraloss family collects it), because
+# it sees tonal-vs-textural errors a single window - and a waveform metric -
+# understate. The engine already computes it every iteration
+# (residual._mrstft_db via _score) but only ever reported it.
+#
+# The measured wall it addresses (docs/PHYSICS_ROADMAP.md): corr-chaining
+# rejects beneficial new structure - a candidate that fixes the spectrum
+# (noise layers, inserted clean partials) can dip global waveform
+# correlation transiently. Flag-gated, default OFF: the published numbers
+# do not move until the lane is re-measured (same rule as M2M_EXCITER).
+_MRSTFT_LANE_CORR_TOL = 0.002  # correlation may regress at most this far
+_MRSTFT_LANE_GAIN_DB = 0.05    # MR-STFT LSD must improve by at least this
+_MRSTFT_LANE_SNR_DB = 1.0      # SNR budget, same as the corr lane's
+
+
+def _mrstft_lane_ok(
+    cand: Dict[str, Any],
+    best: Dict[str, Any],
+    best_corr: float,
+) -> bool:
+    """Whether an iteration the corr lane rejected passes on the MR-STFT lane.
+
+    Every corr-lane channel stays within its budget (SNR, LSD, onset), the
+    segmental-SNR proxy keeps a flat 0.5 dB (there is no corr gain to scale
+    it with here), correlation regresses at most ``_MRSTFT_LANE_CORR_TOL``,
+    and the multi-resolution LSD improves by at least
+    ``_MRSTFT_LANE_GAIN_DB`` - a real spectral gain, not jitter.
+    """
+    if not best:
+        return False
+    if float(cand.get("correlation", 0.0)) < best_corr - _MRSTFT_LANE_CORR_TOL:
+        return False
+    if float(cand.get("snr_db", 0.0)) < float(
+        best.get("snr_db", 0.0)
+    ) - _MRSTFT_LANE_SNR_DB:
+        return False
+    if float(cand.get("log_spectral_distance_db", 0.0)) > float(
+        best.get("log_spectral_distance_db", 0.0)
+    ) + 1.0:
+        return False
+    if float(cand.get("onset_corr", 0.0)) < float(
+        best.get("onset_corr", 0.0)
+    ) - 0.25:
+        return False
+    if float(cand.get("seg_snr_db", 0.0)) < float(
+        best.get("seg_snr_db", 0.0)
+    ) - 0.5:
+        return False
+    return float(cand.get("mrstft_db", 0.0)) <= float(
+        best.get("mrstft_db", float("inf"))
+    ) - _MRSTFT_LANE_GAIN_DB
+
+
 def _process_section_task(args: Tuple[Any, ...]) -> Tuple[Dict[str, Any], List[str], Optional[np.ndarray]]:
     """Self-contained, picklable section processing worker."""
     (sec, y_sec, sr, w_start, st_hw, bank, spectral_lane, *rest) = args
@@ -1587,6 +1643,7 @@ def run_loop(
     energy_parity: bool = False,
     parity_mode: str = "ls",
     joint_refine: bool = False,
+    mrstft_lane: bool = False,
 ) -> Dict[str, Any]:
     """Iterate the RES loop and persist checkpoints + outputs to ``out_dir``.
 
@@ -1749,6 +1806,14 @@ def run_loop(
             g["correlation"] > best_corr + 1e-9
             and _referee_ok(g, best_metrics, gain)
         )
+        referee_lane = "corr"
+        if not accepted and mrstft_lane and _mrstft_lane_ok(
+            g, best_metrics, best_corr
+        ):
+            # Accepted on spectrum, not waveform: record which lane shipped
+            # it so the ledger stays an honest transcript.
+            accepted = True
+            referee_lane = "mrstft"
         if accepted:
             best_corr = g["correlation"]
             best_metrics = dict(g)
@@ -1785,6 +1850,7 @@ def run_loop(
             "sections": [
                 round(float(s["metrics"]["correlation"]), 6) for s in ledger["sections"]
             ],
+            **({"referee_lane": referee_lane} if referee_lane != "corr" else {}),
         })
         with open(ledger_path, "w", encoding="utf-8") as f:
             json.dump(ledger, f, indent=2)

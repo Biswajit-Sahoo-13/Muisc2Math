@@ -455,6 +455,7 @@ def cmd_res(args: argparse.Namespace) -> None:
             energy_parity=bool(getattr(args, "energy_parity", False)),
             parity_mode=getattr(args, "parity_mode", "ls"),
             joint_refine=bool(getattr(args, "joint_refine", False)),
+            mrstft_lane=bool(getattr(args, "mrstft_lane", False)),
         )
 
     iterations = args.iterations
@@ -1116,6 +1117,13 @@ def main() -> None:
              "log-spectral distance instead of waveform correlation",
     )
     p_res.add_argument(
+        "--mrstft-lane", action="store_true",
+        help="Flag-gated referee lane: accept an iteration on multi-"
+             "resolution STFT improvement when waveform correlation stalls "
+             "(the selection criterion of Yamamoto 2019 / DDSP). Default "
+             "off - published numbers move only after re-measurement",
+    )
+    p_res.add_argument(
         "--k-hits", type=int, default=12,
         help="Percussive hits the hypothesis bank may nominate per section "
              "(class C). The default 2 covers roughly one beat.",
@@ -1152,7 +1160,9 @@ def main() -> None:
     )
     p_res.add_argument(
         "--target-corr", type=float, default=0.98,
-        help="Stop when best correlation reaches this (0 = never stop early)",
+        help="Stop when best correlation reaches this (0 = never stop early). "
+             "The web UI deliberately passes 0.0 (it promises the requested "
+             "iterations and plots the full curve) - see res_ui.run_res_payload.",
     )
     p_res.add_argument(
         "--provider",

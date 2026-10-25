@@ -33,6 +33,14 @@ from scipy.optimize import minimize_scalar
 
 from src.tracking import SinusoidalTrack, track_sinusoids
 
+# The analyser's release fade. The renderer's is deliberately shorter (see
+# res_synthesis._RELEASE_FADE_S): it refuses to ring past a partial's
+# support, while the analyser holds its measured envelope over this longer
+# fade. Both values are measured trade-offs (the renderer/analyser replica
+# correlation is ~0.99 by design), which is why the shared support mask
+# takes the fade length as a parameter instead of hard-coding either one.
+_ANALYSER_RELEASE_FADE_S = 0.25
+
 
 def _interp_track(
     frame_times: np.ndarray,
@@ -435,33 +443,16 @@ def refine_track(
     # window measured), constant through the projection window, and past the
     # last frame a fitted decay extends a little before fading out.
     grid = np.arange(n, dtype=np.float64) / sr
-    if stft_half_window_s > 0.0:
-        pre_start = max(0.0, t0s - stft_half_window_s)
-        if (t0s - stft_half_window_s) < 0.0:
-            # First frame of the signal: the detecting window touches the
-            # signal start, so the partial demonstrably exists at full
-            # strength at t=0. A rising ramp would only attenuate real signal.
-            attack_term = np.where(grid >= 0.0, 1.0, 0.0)
-        else:
-            attack_term = np.clip(
-                (grid - pre_start) / max(t0s - pre_start, 1e-9), 0.0, 1.0
-            )
-    else:
-        pre_start = t0s
-        attack_len = min(0.02, 0.5 * max(t0s, 1e-6))
-        attack_term = (
-            np.clip((grid - pre_start) / attack_len, 0.0, 1.0)
-            if attack_len > 1e-9
-            else np.where(grid >= pre_start, 1.0, 0.0)
-        )
+    # The mask itself is the shared kernel the renderer uses (one
+    # implementation, so analyser and renderer cannot drift), with the
+    # analyser's own release fade: the renderer fades over 0.03 s so a
+    # partial stops at its support instead of trailing off.
+    from src.res_synthesis import _support_mask as _shared_support_mask
 
-    if env_decay > 0.0 and env_a0 > 0.0:
-        hold_s = min(1.5, float(np.log(100.0)) / env_decay)
-    else:
-        hold_s = 0.25
-    support_end = t1s + hold_s
-    release_term = np.clip((grid - support_end) / 0.25, 0.0, 1.0)
-    support_mask = attack_term * (1.0 - release_term)
+    support_mask = _shared_support_mask(
+        grid, t0s, t1s, env_decay, env_a0, stft_half_window_s,
+        release_fade_s=_ANALYSER_RELEASE_FADE_S,
+    )
 
     def project(freq: float) -> Tuple[float, float, float, np.ndarray]:
         if use_trajectory:

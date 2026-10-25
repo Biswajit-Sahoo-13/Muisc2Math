@@ -35,7 +35,12 @@ from src.res_percussive import (
     resonant_burst_hypothesis,
     spectral_log_distance,
 )
-from src.res_synthesis import _corr, _render_partial, _support_mask
+from src.res_synthesis import (
+    _corr,
+    _render_partial,
+    _support_mask,
+    shape_noise_spectrum,
+)
 
 _E_REL_MARGIN = 1e-6  # relative residual-energy improvement to accept
 # The exciter: the broadband strike that excites a percussive hit's
@@ -951,17 +956,10 @@ def filtered_noise_hypothesis(
     smooth_mags = np.convolve(band_mags, np.ones(3) / 3.0, mode="same")
     smooth_mags = np.maximum(smooth_mags, 1e-6)
 
-    # 2. Shape seeded white noise
-    rng = np.random.default_rng(int(seed))
-    white = rng.standard_normal(n)
-    w_fft = np.fft.rfft(white)
-
-    min_f = max(10.0, float(band_centers[0]))
-    log_bc = np.log10(np.maximum(band_centers, min_f))
-    log_bins = np.log10(np.maximum(freq_bins, min_f))
-    env_bins = np.interp(log_bins, log_bc, smooth_mags, left=smooth_mags[0], right=smooth_mags[-1])
-
-    shaped = np.fft.irfft(w_fft * env_bins, n=n)
+    # 2. Shape seeded white noise (the shared filtered_noise kernel)
+    shaped = np.fft.irfft(
+        shape_noise_spectrum(seed, n, sr, band_centers, smooth_mags), n=n
+    )
     shaped_rms = float(np.sqrt(np.mean(shaped ** 2)))
     if shaped_rms > 1e-12:
         normed_shaped = shaped / shaped_rms
@@ -1093,21 +1091,15 @@ def sibilance_burst_hypothesis(
         band_mags[b_idx] = float(np.mean(r_mag[in_band])) if np.any(in_band) else 1e-6
     smooth = np.maximum(np.convolve(band_mags, np.ones(3) / 3.0, mode="same"), 1e-6)
 
-    rng = np.random.default_rng(int(seed))
-    w_fft = np.fft.rfft(rng.standard_normal(n))
-    min_f = max(10.0, float(band_centers[0]))
-    env = np.interp(
-        np.log10(np.maximum(freq_bins, min_f)),
-        np.log10(np.maximum(band_centers, min_f)),
-        smooth,
-        left=smooth[0],
-        right=smooth[-1],
+    # Below the first band the burst must be silent: log-interpolation
+    # holds the first band's magnitude flat across everything below it,
+    # which would fill a "sibilance" burst with low-frequency energy and
+    # make it fail its own fit. The shared kernel does the zeroing.
+    shaped = np.fft.irfft(
+        shape_noise_spectrum(seed, n, sr, band_centers, smooth,
+                             zero_below_band=True),
+        n=n,
     )
-    # The interpolation holds the first band's magnitude flat across everything
-    # below it, which would fill a "sibilance" burst with low-frequency energy
-    # and make it fail its own fit. Below the band the burst must be silent.
-    env = np.where(freq_bins >= band_centers[0], env, 0.0)
-    shaped = np.fft.irfft(w_fft * env, n=n)
     rms = float(np.sqrt(np.mean(shaped ** 2)))
     if rms <= 1e-12:
         return _Variant([], e_res, 0, 0.0, 0.0, t0)

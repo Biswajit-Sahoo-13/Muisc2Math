@@ -160,14 +160,22 @@ def _support_mask(
     decay: float,
     amp: float,
     stft_half_window_s: float,
+    release_fade_s: float = _RELEASE_FADE_S,
 ) -> np.ndarray:
-    """Support window matching the SMS renderer (see sinusoidal_model).
+    """Support window shared by the SMS analyser and this renderer.
 
     Content one STFT half-window before the first frame is what the detecting
     window measured (backed by a rising ramp), the partial lives at full
     strength through the projection window, and past the last frame a fitted
-    decay holds a little before a 0.25 s fade. Without a half-window an
+    decay holds a little before a release fade. Without a half-window an
     approximate 20 ms attack is used.
+
+    ``release_fade_s`` is the ONE deliberate analyser/renderer difference:
+    the renderer passes the short default (``_RELEASE_FADE_S``) so a partial
+    stops at its support instead of trailing off, while the analyser
+    (``sinusoidal_model.refine_track``) passes 0.25 s. Both values are
+    measured trade-offs - see the comment at ``_RELEASE_FADE_S`` and
+    tests/test_res_whistle_suppression.py.
     """
     if stft_half_window_s > 0.0:
         pre_start = max(0.0, start_time - stft_half_window_s)
@@ -189,8 +197,44 @@ def _support_mask(
     else:
         hold_s = 0.25
     support_end = end_time + hold_s
-    release_term = np.clip((t - support_end) / _RELEASE_FADE_S, 0.0, 1.0)
+    release_term = np.clip((t - support_end) / release_fade_s, 0.0, 1.0)
     return attack_term * (1.0 - release_term)
+
+
+def shape_noise_spectrum(
+    seed: int,
+    n: int,
+    sr: int,
+    band_centers: Sequence[float],
+    band_mags: Sequence[float],
+    zero_below_band: bool = False,
+) -> np.ndarray:
+    """Seeded white noise shaped by a log-spaced band envelope (spectrum).
+
+    The shared kernel behind every ``filtered_noise`` proposal: draw the
+    seeded white stream, interpolate the band magnitudes onto the rfft bins
+    in log-frequency, and return the shaped complex spectrum. Callers do
+    their own ``irfft`` - the class-C++ channel normalises the result, the
+    sibilance burst keeps it raw, and the renderer may split it per band.
+
+    ``zero_below_band`` silences everything below the first band centre:
+    log-interpolation would otherwise hold the first magnitude flat across
+    the low end and fill a highs-only burst with bass energy.
+    """
+    centers = np.asarray(band_centers, dtype=np.float64)
+    mags = np.asarray(band_mags, dtype=np.float64)
+    rng = np.random.default_rng(int(seed))
+    white = rng.standard_normal(n)
+    freq_bins = np.fft.rfftfreq(n, 1.0 / sr)
+    min_f = max(10.0, float(centers[0]))
+    log_bc = np.log10(np.maximum(centers, min_f))
+    log_bins = np.log10(np.maximum(freq_bins, min_f))
+    env_bins = np.interp(
+        log_bins, log_bc, mags, left=mags[0], right=mags[-1]
+    )
+    if zero_below_band:
+        env_bins = np.where(freq_bins >= centers[0], env_bins, 0.0)
+    return np.fft.rfft(white) * env_bins
 
 
 def _support_window(
@@ -474,18 +518,11 @@ def _render_partial(
         if amp <= 0.0 or n < 8:
             return np.zeros(n)
         seed = int(p.get("seed", 42))
-        rng = np.random.default_rng(seed)
-        white = rng.standard_normal(n)
         band_centers = np.asarray(p.get("band_centers", []), dtype=np.float64)
         band_mags = np.asarray(p.get("band_mags", []), dtype=np.float64)
         if band_centers.size >= 2 and band_mags.size == band_centers.size:
-            w_fft = np.fft.rfft(white)
+            shaped = shape_noise_spectrum(seed, n, sr, band_centers, band_mags)
             freq_bins = np.fft.rfftfreq(n, 1.0 / sr)
-            min_f = max(10.0, float(band_centers[0]))
-            log_bc = np.log10(np.maximum(band_centers, min_f))
-            log_bins = np.log10(np.maximum(freq_bins, min_f))
-            env_bins = np.interp(log_bins, log_bc, band_mags, left=band_mags[0], right=band_mags[-1])
-            shaped = w_fft * env_bins
             # Per-band envelopes: split the shaped spectrum by the fitted
             # band edges, ring each band down/up on its own measured
             # envelope, and sum. This is what turns "stationary hiss" into
@@ -517,7 +554,8 @@ def _render_partial(
             if not used_bands:
                 sig = np.fft.irfft(shaped, n=n)
         else:
-            sig = white
+            rng = np.random.default_rng(seed)
+            sig = rng.standard_normal(n)
         sig_rms = float(np.sqrt(np.mean(sig ** 2)))
         if sig_rms > 1e-12:
             sig = sig * (amp / sig_rms)

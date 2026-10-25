@@ -58,6 +58,25 @@ depth, seam, adapter, leverage, locality) for the structure.
 - **Tournament** — `tournament_section`: per-section competition where every
   model class proposes hypotheses and the referee accepts or rejects each,
   appending records to the ledger.
+- **Refit strategies** — the three refitters are deliberately different
+  engines, not three copies of one: `refine_track` (analyser) fits a track's
+  frequency and complex gain by least-squares projection inside the analysis
+  window; `_section_update` (coordinate lifter) greedily re-projects one
+  partial at a time against the section residual, accepting an edit only
+  when section correlation strictly improves; `tournament_section` (bank)
+  lets whole equation classes propose hypotheses under an overfit-guarded
+  residual criterion with the spectral lane for stochastic classes. A shared
+  "one refit engine" was reviewed (2026-10-25) and rejected: the acceptance
+  criteria are measured behaviors, and merging them would move published
+  numbers for no structural gain.
+- **Referee metric family** — the four log-spectral distances are four
+  distinct measurements, not duplication: `residual.compute_error_metrics`
+  (canonical: coherent-gain-normalised STFT, -80 dB floor — the one scores
+  and docs cite), `res_bank.section_lsd` (fast framed variant),
+  `res_bank.hf_log_spectral_distance` (HF bins only, L1 — the spectral
+  lane's magnitude-domain test), and `res_percussive.spectral_log_distance`
+  (relative floor, for broadband exciter judgement). New code uses the
+  canonical one unless it needs one of these specific behaviors.
 - **Hypothesis** — one proposed candidate: a partial list, a parameter
   count, and a measured error (`_Variant`), from a class constructor
   (`filtered_noise_hypothesis`, `percussive_bundle`, …).
