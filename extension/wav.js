@@ -42,8 +42,14 @@ function encodeWav(samples, sampleRate) {
 // in one pass. Crops to `maxSeconds` before resampling to bound the work.
 async function decodeToMono(blob, targetRate, maxSeconds) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
-  await ctx.close();
+  // close() in finally: a failed decode must not leak the context - the
+  // browser caps live AudioContexts (~6), and leaked ones kill later decodes.
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  } finally {
+    await ctx.close().catch(() => {});
+  }
   const cap = Math.min(
     decoded.length,
     Math.max(1, Math.floor(maxSeconds * decoded.sampleRate))

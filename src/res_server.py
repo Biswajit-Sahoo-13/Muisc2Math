@@ -137,6 +137,10 @@ def recreate(body: bytes, query: Dict[str, list]) -> Dict[str, Any]:
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "M2M-RES/1.0"
+    # Per-socket-read timeout: a client that stalls mid-body holds only its
+    # own thread, and only for this long (the engine runs AFTER the body is
+    # fully read, so long jobs are not affected).
+    timeout = 300
 
     def _cors(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -168,7 +172,11 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path != "/api/recreate":
             self._json(404, {"ok": False, "error": "not found"})
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._json(400, {"ok": False, "error": "bad Content-Length header"})
+            return
         if length <= 0:
             self._json(400, {"ok": False, "error": "empty body - POST the WAV bytes"})
             return

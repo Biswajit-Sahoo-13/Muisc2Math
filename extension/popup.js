@@ -19,7 +19,10 @@ const PRESETS = {
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { busy: false, recorder: null, countdown: null, abort: null, result: null, discard: false };
+const state = {
+  busy: false, recorder: null, countdown: null, abort: null, result: null,
+  discard: false, cancelled: false, stopTimer: null,
+};
 
 /* ---------- settings ---------- */
 
@@ -46,9 +49,9 @@ const clampDuration = (v) => Math.max(2, Math.min(60, parseInt(v, 10) || 15));
 async function checkHealth() {
   const dot = $("server-dot"), note = $("server-note");
   const url = serverUrl();
-  if (!/^https?:\/\//.test(url)) {
+  if (!/^https?:\/\//i.test(url)) {
     dot.className = "dot bad";
-    note.textContent = "URL must start with http://";
+    note.textContent = "URL must start with http:// or https://";
     return;
   }
   try {
@@ -135,8 +138,8 @@ async function runEngine(wavBuffer, name) {
     showResults(j, name);
   } catch (err) {
     if (err.name === "AbortError") { clearBusy(); return; }
-    alert("Music2Math: " + err.message);
     clearBusy();
+    alert("Music2Math: " + err.message);
     checkHealth();
     return;
   }
@@ -183,16 +186,19 @@ function showResults(j, name) {
 /* ---------- flows ---------- */
 
 async function handleFile(file) {
+  // Reset FIRST, on every path, so re-picking the same file always fires
+  // `change` (including the early-return paths below).
+  $("file-input").value = "";
   if (state.busy || !file) return;
   if (file.size === 0) {
     alert("That file is empty.");
     return;
   }
-  const input = $("file-input");
-  input.value = ""; // so picking the SAME file again still fires `change`
+  state.cancelled = false;
   try {
     setBusy("Decoding " + file.name + "…");
     const mono = await decodeToMono(file, TARGET_RATE, MAX_UPLOAD_S);
+    if (state.cancelled) { state.cancelled = false; return; }
     if (!mono || mono.length < TARGET_RATE) {
       throw new Error("no usable audio track (under 1 second)");
     }
@@ -210,12 +216,18 @@ function startRecording() {
     alert("Tab capture is not available in this browser — use file upload.");
     return;
   }
+  // Synchronous guard: without it, a double-click enters the async capture
+  // callback twice and the second recorder orphans the first (its stream
+  // stays live, its onstop chain is lost).
+  state.busy = true;
   state.discard = false;
+  state.cancelled = false;
   chrome.tabCapture.capture({ audio: true, video: false }, (stream) => {
     if (!stream) {
       const err = chrome.runtime.lastError
         ? chrome.runtime.lastError.message
         : "no stream (try a normal tab playing audio)";
+      clearBusy();
       alert("Capture failed: " + err);
       return;
     }
@@ -227,6 +239,10 @@ function startRecording() {
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     const seconds = clampDuration($("duration").value);
     rec.onstop = async () => {
+      // This recording is over: its stop timer must never fire again
+      // (a stale timer closing over state.recorder could stop a LATER
+      // recording partway through).
+      if (state.stopTimer) { clearTimeout(state.stopTimer); state.stopTimer = null; }
       stream.getTracks().forEach((t) => t.stop());
       try { chrome.tabCapture.release(); } catch { /* older Chrome */ }
       $("record-btn").textContent = "Record this tab";
@@ -249,8 +265,10 @@ function startRecording() {
         state.recorder.stop();
       }
     };
-    setTimeout(() => {
-      if (state.recorder && state.recorder.state !== "inactive") state.recorder.stop();
+    // The timer closes over THIS recorder (not state.recorder), so it can
+    // never stop a recording made after this one.
+    state.stopTimer = setTimeout(() => {
+      if (rec.state !== "inactive") rec.stop();
     }, seconds * 1000);
   });
 }
@@ -261,8 +279,10 @@ async function handleBlob(blob, name, seconds) {
     alert("Nothing was recorded — keep the tab playing audio while recording.");
     return;
   }
+  state.cancelled = false;
   try {
     const mono = await decodeToMono(blob, TARGET_RATE, seconds);
+    if (state.cancelled) { state.cancelled = false; return; }
     if (!mono || mono.length < TARGET_RATE) {
       throw new Error("capture too short (under 1 second)");
     }
@@ -288,12 +308,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   // startRecording is the ONLY live handler - no double-fire.
   $("record-btn").onclick = startRecording;
   $("cancel-btn").addEventListener("click", () => {
+    if (state.stopTimer) { clearTimeout(state.stopTimer); state.stopTimer = null; }
     if (state.recorder && state.recorder.state !== "inactive") {
-      // Cancel during recording discards the capture (see rec.onstop);
-      // cancel during the engine run aborts the fetch.
+      // Cancel during recording discards the capture (see rec.onstop).
       state.discard = true;
       state.recorder.stop();
     }
+    // Cancel during a decode window: nothing is abortable there, so latch
+    // it - handleFile/handleBlob check the latch after the decode resolves.
+    state.cancelled = true;
     state.abort && state.abort.abort();
     clearBusy();
     $("record-btn").textContent = "Record this tab";
