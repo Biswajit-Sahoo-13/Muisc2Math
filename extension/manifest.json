@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Music2Math — Song → Equations",
+  "version": "0.1.0",
+  "description": "Capture audio from the current tab or upload a file, recreate it as editable math equations with the local M2M engine, and download the equation sheet as TXT.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Music2Math"
+  },
+  "permissions": ["tabCapture", "storage"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "icons": {
+    "128": "icon128.png"
+  }
+}

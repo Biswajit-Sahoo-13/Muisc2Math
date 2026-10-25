@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Music2Math</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <span class="logo">Music2Math</span>
+    <span id="server-dot" class="dot off" title="engine server status"></span>
+    <span id="server-note" class="note">checking…</span>
+  </header>
+
+  <section class="settings">
+    <label>Engine
+      <input id="server-url" type="text" spellcheck="false" />
+    </label>
+    <label>Preset
+      <select id="preset">
+        <option value="fast">Fast (2 iterations)</option>
+        <option value="standard" selected>Standard (6, noise + lane + loudness)</option>
+        <option value="full">Full (8, + polish + MR-STFT lane)</option>
+      </select>
+    </label>
+    <label>Seconds
+      <input id="duration" type="number" min="2" max="60" step="1" value="15" />
+    </label>
+    <label>Stems
+      <select id="stems">
+        <option value="none" selected>off (fast)</option>
+        <option value="auto">Demucs (slow, best)</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="actions">
+    <label class="btn" for="file-input">Upload audio / video file</label>
+    <input id="file-input" type="file" accept="audio/*,video/*" hidden />
+    <button id="record-btn" class="btn">Record this tab</button>
+  </section>
+
+  <section id="progress" class="progress hidden">
+    <div class="spinner"></div>
+    <div>
+      <div id="progress-title">Engine running…</div>
+      <div id="progress-detail" class="note">keep this popup open</div>
+      <div id="progress-timer" class="note">0 s</div>
+    </div>
+    <button id="cancel-btn" class="btn subtle hidden">Cancel</button>
+  </section>
+
+  <section id="results" class="results hidden">
+    <div class="chips">
+      <div class="chip"><b id="r-fidelity">–</b><span>fidelity %</span></div>
+      <div class="chip"><b id="r-corr">–</b><span>correlation</span></div>
+      <div class="chip"><b id="r-snr">–</b><span>SNR dB</span></div>
+      <div class="chip"><b id="r-eqs">–</b><span>equations</span></div>
+    </div>
+    <div id="pillars" class="pillars"></div>
+    <div id="r-note" class="note"></div>
+    <div class="row">
+      <button id="download-btn" class="btn">Download equations .txt</button>
+    </div>
+    <div class="row">
+      <span class="note">recreation:</span>
+      <audio id="playback" controls></audio>
+    </div>
+  </section>
+
+  <footer>
+    <span class="note">runs 100% locally · engine: <code>python main.py serve</code></span>
+  </footer>
+
+  <script src="wav.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

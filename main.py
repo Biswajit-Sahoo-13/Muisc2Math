@@ -386,6 +386,13 @@ def cmd_sms_remake(args: argparse.Namespace) -> None:
     print(f"[+] Comparison plot : {res['comparison_plot']}")
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Run the local API server the browser extension POSTs captures to."""
+    from src.res_server import serve
+
+    serve(host=args.host, port=args.port)
+
+
 def cmd_res(args: argparse.Namespace) -> None:
     """RES: Reverse Engineer a Song - build evidence, hypothesize, verify, ledger."""
     if getattr(args, "stems", None):
@@ -1222,6 +1229,15 @@ def main() -> None:
              "'native', 'demucs', or a directory path containing bass/drums/vocals/other wav files",
     )
     p_res.set_defaults(func=cmd_res)
+
+    p_serve = subparsers.add_parser(
+        "serve", help="Run the local RES API server (what the browser extension talks to)"
+    )
+    p_serve.add_argument("--host", default="127.0.0.1",
+                         help="Bind address (default 127.0.0.1 - localhost only)")
+    p_serve.add_argument("--port", type=int, default=8765,
+                         help="Port (default 8765)")
+    p_serve.set_defaults(func=cmd_serve)
 
     p_res_rec = subparsers.add_parser(
         "res-recommend",

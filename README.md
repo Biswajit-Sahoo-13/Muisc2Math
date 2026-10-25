@@ -593,6 +593,21 @@ Launch the Streamlit interface:
 
 Then open <http://localhost:8501>.
 
+### 2. Browser extension (capture any tab → equations)
+
+Run the engine's local API, then load the unpacked extension — it records
+the audio of whatever tab is playing (or takes an uploaded file), shows
+the fidelity/correlation result, plays the recreation and downloads the
+equation sheet as `.txt`:
+
+```bash
+.venv\Scripts\python.exe main.py serve     # local API on 127.0.0.1:8765
+```
+
+Load `extension/` via `chrome://extensions` → Developer mode → Load
+unpacked. Details and the roadmap: **[extension/README.md](extension/README.md)**,
+**[docs/EXTENSION_ROADMAP.md](docs/EXTENSION_ROADMAP.md)**.
+
 The app has two tabs, both of which are the product itself rather than a toolbox:
 
 - **RES: Song → Equations → Replay** — upload any audio file, run the iterative equation synthesis loop, and compare Original vs Recreated vs Residual. The right-hand panel streams the run stage by stage (prepare → evidence → loop → package) with live correlation, SNR and LSD, so a multi-minute run is never a black box. The per-section equations are browsable in a dropdown, and the whole song plays back in the page.
