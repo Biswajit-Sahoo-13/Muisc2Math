@@ -327,6 +327,7 @@ def run_res_payload(
     target_corr: float = 0.0,
     mrstft_lane: bool = False,
     polish: bool = False,
+    joint_refine: bool = False,
 ) -> Dict[str, Any]:
     """Analyze ``upload_bytes`` with the RES loop and collect display artifacts.
 
@@ -441,6 +442,9 @@ def run_res_payload(
             target_corr=target_corr, bank=bank, progress_fn=_prog if progress is not None else None,
             enable_noise=enable_noise, spectral_lane=spectral_lane,
             k_notes=k_notes, k_hits=k_hits,
+            energy_parity=energy_parity, parity_mode=parity_mode,
+            polish=polish, mrstft_lane=mrstft_lane,
+            joint_refine=joint_refine,
         )
         stems_payload = multi.get("stems") or {}
         try:
@@ -464,6 +468,7 @@ def run_res_payload(
             k_notes=k_notes, k_hits=k_hits,
             energy_parity=energy_parity, parity_mode=parity_mode,
             mrstft_lane=mrstft_lane, polish=polish,
+            joint_refine=joint_refine,
         )
     if progress is not None:
         progress.update(stage="packaging", stage_pct=1.0,

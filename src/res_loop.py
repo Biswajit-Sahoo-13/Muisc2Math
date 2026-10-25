@@ -2011,6 +2011,8 @@ def run_stems_res_loop(
     energy_parity: bool = False,
     parity_mode: str = "ls",
     polish: bool = False,
+    mrstft_lane: bool = False,
+    joint_refine: bool = False,
 ) -> Dict[str, Any]:
     """Execute Tri-Mode Stem Separation and Multi-Track RES Tournament Loop.
 
@@ -2153,6 +2155,8 @@ def run_stems_res_loop(
                 enable_noise=enable_noise,
                 k_notes=k_notes, k_hits=k_hits,
                 polish=polish,
+                mrstft_lane=mrstft_lane,
+                joint_refine=joint_refine,
             )
             recon_s = render_ledger(s_ledger, n, ola=True)
 
